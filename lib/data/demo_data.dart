@@ -19,6 +19,8 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     colorValue: 0xFF1E88E5,
     totalMarks: 100,
     finalExamMarks: 60,
+    creditHours: 3,
+    absenceLimit: 4,
   );
   const db = Subject(
     id: 'demo-db',
@@ -28,6 +30,8 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     colorValue: 0xFF00897B,
     totalMarks: 100,
     finalExamMarks: 50,
+    creditHours: 3,
+    absenceLimit: 3,
   );
   const math = Subject(
     id: 'demo-math',
@@ -37,6 +41,8 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     colorValue: 0xFFF4511E,
     totalMarks: 150,
     finalExamMarks: 100,
+    creditHours: 4,
+    absenceLimit: 5,
   );
   const se = Subject(
     id: 'demo-se',
@@ -46,6 +52,7 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     colorValue: 0xFF8E24AA,
     totalMarks: 100,
     finalExamMarks: 60,
+    creditHours: 2,
   );
   final subjects = [prog, db, math, se];
 
@@ -124,14 +131,30 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
   final studyItems = <StudyItem>[];
   void lectures(Subject s, List<StudyStatus> statuses) {
     for (var i = 0; i < statuses.length; i++) {
+      final released = day(-7 * (statuses.length - i));
+      final status = statuses[i];
+      final isLatestDone =
+          status.isDone &&
+          (i + 1 == statuses.length || !statuses[i + 1].isDone);
+      // Older lectures already had some reviews; the most recently studied
+      // one is due for its first review today.
       studyItems.add(
         StudyItem(
           id: 'demo-l-${s.id}-$i',
           subjectId: s.id,
           title: 'محاضرة ${i + 1}',
           number: i + 1,
-          releaseDate: day(-7 * (statuses.length - i)),
-          status: statuses[i],
+          releaseDate: released,
+          status: status,
+          studiedAt: status.isDone
+              ? (isLatestDone
+                    ? day(-1, 20)
+                    : released.add(const Duration(days: 1)))
+              : null,
+          reviewCount: !status.isDone || isLatestDone
+              ? 0
+              : (status == StudyStatus.revised ? 3 : 2),
+          lastReviewedAt: !status.isDone || isLatestDone ? null : day(-2, 21),
         ),
       );
     }
@@ -319,6 +342,42 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     ),
   ];
 
+  final studySessions = <StudySession>[];
+  void studied(int dayOffset, Subject? s, int minutes, [int hour = 19]) {
+    studySessions.add(
+      StudySession(
+        id: 'demo-ss-${studySessions.length}',
+        subjectId: s?.id,
+        startedAt: day(dayOffset, hour),
+        minutes: minutes,
+      ),
+    );
+  }
+
+  studied(-6, prog, 60);
+  studied(-5, db, 45);
+  studied(-5, math, 30, 21);
+  studied(-3, se, 90);
+  studied(-2, prog, 50);
+  studied(-2, db, 25, 21);
+  studied(-1, math, 120);
+  studied(-1, null, 30, 22);
+  studied(0, prog, 50, 8);
+
+  final attendance = <AttendanceRecord>[
+    for (final w in [-14, -7])
+      for (final session in sessions)
+        AttendanceRecord(
+          id: 'demo-at-${session.id}$w',
+          subjectId: session.subjectId,
+          sessionId: session.id,
+          type: session.type,
+          date: day(w + (session.weekday - now.weekday)),
+          // One missed database section.
+          present: !(session.id == 'demo-s4' && w == -7),
+        ),
+  ];
+
   final data = {
     'version': AppStore.dataVersion,
     'subjects': subjects.map((e) => e.toJson()).toList(),
@@ -328,6 +387,8 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     'assessments': assessments.map((e) => e.toJson()).toList(),
     'projects': projects.map((e) => e.toJson()).toList(),
     'grades': grades.map((e) => e.toJson()).toList(),
+    'studySessions': studySessions.map((e) => e.toJson()).toList(),
+    'attendance': attendance.map((e) => e.toJson()).toList(),
     'settings': store.settings.toJson(),
   };
   return store.importJson(jsonEncode(data));

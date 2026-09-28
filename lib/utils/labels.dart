@@ -17,9 +17,9 @@ extension SessionTypeLabel on SessionType {
   };
 
   IconData get icon => switch (this) {
-    SessionType.lecture => Icons.school_outlined,
-    SessionType.section => Icons.groups_outlined,
-    SessionType.lab => Icons.computer_outlined,
+    SessionType.lecture => Icons.school_rounded,
+    SessionType.section => Icons.groups_rounded,
+    SessionType.lab => Icons.computer_rounded,
   };
 }
 
@@ -42,17 +42,17 @@ extension StudyStatusLabel on StudyStatus {
   };
 
   IconData get icon => switch (this) {
-    StudyStatus.notStarted => Icons.radio_button_unchecked,
-    StudyStatus.inProgress => Icons.timelapse,
-    StudyStatus.studied => Icons.check_circle,
-    StudyStatus.revised => Icons.verified,
+    StudyStatus.notStarted => Icons.radio_button_unchecked_rounded,
+    StudyStatus.inProgress => Icons.timelapse_rounded,
+    StudyStatus.studied => Icons.check_circle_rounded,
+    StudyStatus.revised => Icons.verified_rounded,
   };
 
   Color get color => switch (this) {
-    StudyStatus.notStarted => const Color(0xFF9E9E9E),
-    StudyStatus.inProgress => const Color(0xFFF59E0B),
-    StudyStatus.studied => const Color(0xFF22A45D),
-    StudyStatus.revised => const Color(0xFF2E7DD7),
+    StudyStatus.notStarted => const Color(0xFF9A98B0),
+    StudyStatus.inProgress => const Color(0xFFF39C12),
+    StudyStatus.studied => const Color(0xFF00B894),
+    StudyStatus.revised => const Color(0xFF6C5CE7),
   };
 }
 
@@ -64,9 +64,9 @@ extension PriorityLabel on Priority {
   };
 
   Color get color => switch (this) {
-    Priority.low => const Color(0xFF78909C),
-    Priority.medium => const Color(0xFFF59E0B),
-    Priority.high => const Color(0xFFE53935),
+    Priority.low => const Color(0xFF74B9FF),
+    Priority.medium => const Color(0xFFF39C12),
+    Priority.high => const Color(0xFFE74C3C),
   };
 }
 
@@ -78,9 +78,9 @@ extension AssessmentTypeLabel on AssessmentType {
   };
 
   IconData get icon => switch (this) {
-    AssessmentType.quiz => Icons.quiz_outlined,
-    AssessmentType.exam => Icons.edit_note,
-    AssessmentType.assignment => Icons.assignment_outlined,
+    AssessmentType.quiz => Icons.quiz_rounded,
+    AssessmentType.exam => Icons.edit_note_rounded,
+    AssessmentType.assignment => Icons.assignment_rounded,
   };
 
   /// What "done" means for this type.
@@ -110,33 +110,33 @@ extension GradeCategoryLabel on GradeCategory {
   };
 
   IconData get icon => switch (this) {
-    GradeCategory.quiz => Icons.quiz_outlined,
-    GradeCategory.midterm => Icons.edit_note,
-    GradeCategory.assignment => Icons.assignment_outlined,
-    GradeCategory.project => Icons.rocket_launch_outlined,
-    GradeCategory.practical => Icons.science_outlined,
-    GradeCategory.oral => Icons.record_voice_over_outlined,
-    GradeCategory.attendance => Icons.how_to_reg_outlined,
-    GradeCategory.finalExam => Icons.workspace_premium_outlined,
-    GradeCategory.other => Icons.star_outline,
+    GradeCategory.quiz => Icons.quiz_rounded,
+    GradeCategory.midterm => Icons.edit_note_rounded,
+    GradeCategory.assignment => Icons.assignment_rounded,
+    GradeCategory.project => Icons.rocket_launch_rounded,
+    GradeCategory.practical => Icons.science_rounded,
+    GradeCategory.oral => Icons.record_voice_over_rounded,
+    GradeCategory.attendance => Icons.how_to_reg_rounded,
+    GradeCategory.finalExam => Icons.workspace_premium_rounded,
+    GradeCategory.other => Icons.star_rounded,
   };
 }
 
 /// Colors offered for subjects.
 const subjectPalette = <int>[
-  0xFF3F51B5,
-  0xFF1E88E5,
-  0xFF00897B,
-  0xFF43A047,
-  0xFF7CB342,
-  0xFFF4511E,
-  0xFFFB8C00,
-  0xFFE53935,
-  0xFFD81B60,
-  0xFF8E24AA,
-  0xFF5E35B1,
-  0xFF6D4C41,
-  0xFF546E7A,
+  0xFF6C5CE7, // violet
+  0xFF0984E3, // blue
+  0xFF00B894, // teal
+  0xFF00A8B5, // cyan
+  0xFFE17055, // terracotta
+  0xFFFF7675, // coral
+  0xFFE84393, // magenta
+  0xFFF39C12, // orange
+  0xFF27AE60, // green
+  0xFF8E44AD, // purple
+  0xFF2C3E91, // navy
+  0xFF6D4C41, // brown
+  0xFF636E72, // grey
 ];
 
 /// Reminder choices for deadlines (minutes before).

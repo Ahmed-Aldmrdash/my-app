@@ -24,6 +24,64 @@ String gradeLabel(double percent) {
   return 'ضعيف';
 }
 
+/// A letter grade in the credit-hour system.
+class GpaGrade {
+  const GpaGrade(this.letter, this.points, this.minPercent);
+  final String letter;
+  final double points;
+  final double minPercent;
+}
+
+/// A common Egyptian credit-hour scale, highest first. Universities differ
+/// slightly, so the GPA shown is an estimate.
+const gpaScale = <GpaGrade>[
+  GpaGrade('A', 4.0, 90),
+  GpaGrade('A-', 3.7, 85),
+  GpaGrade('B+', 3.3, 80),
+  GpaGrade('B', 3.0, 75),
+  GpaGrade('B-', 2.7, 70),
+  GpaGrade('C+', 2.3, 65),
+  GpaGrade('C', 2.0, 60),
+  GpaGrade('C-', 1.7, 55),
+  GpaGrade('D', 1.0, 50),
+  GpaGrade('F', 0, 0),
+];
+
+GpaGrade gpaGradeFor(double percent) =>
+    gpaScale.firstWhere((g) => percent >= g.minPercent);
+
+/// The grade bands to aim for, in the chosen [system], lowest first.
+List<GradeBand> targetBands(GradingSystem system) => switch (system) {
+  GradingSystem.percentage => gradeBands.reversed.toList(),
+  GradingSystem.gpa => const [
+    GradeBand('D', 50),
+    GradeBand('C', 60),
+    GradeBand('B', 75),
+    GradeBand('A', 90),
+  ],
+};
+
+/// Short grade text for a percentage in the chosen [system].
+String gradeText(double percent, GradingSystem system) =>
+    system == GradingSystem.gpa
+    ? gpaGradeFor(percent).letter
+    : gradeLabel(percent);
+
+/// Expected GPA from each subject's current percentage, weighted by credit
+/// hours. Null when no subject has marks yet.
+double? expectedGpa(Iterable<SubjectGradeSummary> summaries) {
+  var points = 0.0;
+  var hours = 0;
+  for (final s in summaries) {
+    final p = s.percentSoFar;
+    final h = s.subject.creditHours;
+    if (p == null || h <= 0) continue;
+    points += gpaGradeFor(p).points * h;
+    hours += h;
+  }
+  return hours == 0 ? null : points / hours;
+}
+
 class CategoryTotal {
   CategoryTotal(this.category);
   final GradeCategory category;

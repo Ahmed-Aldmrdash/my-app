@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_store.dart';
+import '../models/models.dart';
 import '../services/notification_service.dart';
+import '../services/reminder_planner.dart';
+import '../utils/study_stats.dart';
+import '../widgets/common.dart';
 import 'dashboard_screen.dart';
+import 'focus_screen.dart';
 import 'schedule_screen.dart';
 import 'study_screen.dart';
 import 'subjects_screen.dart';
@@ -23,6 +28,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
   final _tasksTab = ValueNotifier<int>(0);
   StreamSubscription<String>? _taps;
+  Timer? _focusCheck;
 
   @override
   void initState() {
@@ -30,7 +36,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     final notifications = NotificationService.instance;
     _taps = notifications.taps.stream.listen(_openPayload);
+    // Finish a focus session that ended while the app was in the background
+    // or on another screen.
+    _focusCheck = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _completeFocus(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _completeFocus();
       final launch = notifications.launchPayload;
       if (launch != null) {
         notifications.launchPayload = null;
@@ -44,17 +57,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _taps?.cancel();
+    _focusCheck?.cancel();
     _tasksTab.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Daily summaries are computed ahead of time; refresh them whenever the
-    // app comes back to the foreground.
     if (state == AppLifecycleState.resumed) {
+      _completeFocus();
+      // Daily summaries are computed ahead of time; refresh them whenever
+      // the app comes back to the foreground.
       NotificationService.instance.scheduleSoon(context.read<AppStore>());
     }
+  }
+
+  Future<void> _completeFocus() async {
+    if (!mounted || FocusScreen.isOpen) return;
+    final store = context.read<AppStore>();
+    final focus = store.focus;
+    final finished = await store.completeFocusIfDue();
+    if (!mounted || finished == null || focus == null) return;
+    showSnack(
+      context,
+      finished == FocusPhase.focus
+          ? '🎉 خلصت جلسة ${studyTimeText((focus.plannedSeconds / 60).round())} واتسجلت'
+          : '⏰ البريك خلص — يلا نكمل',
+    );
   }
 
   Future<void> _askPermissionOnce() async {
@@ -64,14 +93,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await store.updateSettings(store.settings.copyWith(askedPermissions: true));
   }
 
-  /// Payloads look like "tab:3:1" (tab 3, sub-tab 1).
+  /// Payloads look like "tab:3:1" (tab 3, sub-tab 1) or "focus".
   void _openPayload(String payload) {
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    if (payload == ReminderTarget.focus) {
+      pushPage(context, const FocusScreen());
+      return;
+    }
     final parts = payload.split(':');
     if (parts.length < 2 || parts.first != 'tab') return;
     final tab = int.tryParse(parts[1]);
     final sub = parts.length > 2 ? int.tryParse(parts[2]) : null;
     if (tab == null) return;
-    Navigator.of(context).popUntil((r) => r.isFirst);
     _navigate(tab, sub);
   }
 
@@ -99,27 +132,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
+            selectedIcon: Icon(Icons.home_rounded),
             label: 'الرئيسية',
           ),
           NavigationDestination(
             icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
+            selectedIcon: Icon(Icons.calendar_month_rounded),
             label: 'الجدول',
           ),
           NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book),
+            icon: Icon(Icons.auto_stories_outlined),
+            selectedIcon: Icon(Icons.auto_stories_rounded),
             label: 'المذاكرة',
           ),
           NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
+            icon: Icon(Icons.checklist_rounded),
+            selectedIcon: Icon(Icons.fact_check_rounded),
             label: 'المهام',
           ),
           NavigationDestination(
             icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.school),
+            selectedIcon: Icon(Icons.school_rounded),
             label: 'المواد',
           ),
         ],

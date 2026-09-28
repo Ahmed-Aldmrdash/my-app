@@ -35,6 +35,14 @@ class _SubjectFormState extends State<SubjectForm> {
     text: formatNumber(widget.subject?.finalExamMarks ?? 60),
   );
   late final _notes = TextEditingController(text: widget.subject?.notes);
+  late final _hours = TextEditingController(
+    text: '${widget.subject?.creditHours ?? 3}',
+  );
+  late final _absences = TextEditingController(
+    text: (widget.subject?.absenceLimit ?? 0) == 0
+        ? ''
+        : '${widget.subject!.absenceLimit}',
+  );
   late int _color;
 
   @override
@@ -56,6 +64,8 @@ class _SubjectFormState extends State<SubjectForm> {
       _total,
       _final,
       _notes,
+      _hours,
+      _absences,
     ]) {
       c.dispose();
     }
@@ -73,6 +83,8 @@ class _SubjectFormState extends State<SubjectForm> {
       colorValue: _color,
       totalMarks: parseNumber(_total.text) ?? 100,
       finalExamMarks: parseNumber(_final.text) ?? 0,
+      creditHours: (parseNumber(_hours.text) ?? 3).round().clamp(0, 12),
+      absenceLimit: (parseNumber(_absences.text) ?? 0).round().clamp(0, 99),
       notes: _notes.text.trim(),
     );
     await context.read<AppStore>().saveSubject(subject);
@@ -203,6 +215,33 @@ class _SubjectFormState extends State<SubjectForm> {
                 'الباقي بيبقى أعمال السنة (كويزات، ميدترم، أسايمنتات…)',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+            ),
+            formGap,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _hours,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'الساعات المعتمدة',
+                      helperText: 'لحساب الـ GPA',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _absences,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'الغياب المسموح',
+                      helperText: 'قبل الحرمان (اختياري)',
+                    ),
+                  ),
+                ),
+              ],
             ),
             formGap,
             TextFormField(

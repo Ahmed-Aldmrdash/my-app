@@ -4,16 +4,24 @@ import 'package:provider/provider.dart';
 import '../data/app_store.dart';
 import '../data/demo_data.dart';
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../utils/grade_calculator.dart';
 import '../utils/labels.dart';
+import '../utils/quotes.dart';
 import '../utils/schedule_utils.dart';
+import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
-import 'assessment_form.dart';
+import '../widgets/quick_add.dart';
+import 'focus_screen.dart';
+import 'grade_form.dart';
 import 'project_detail_screen.dart';
 import 'settings_screen.dart';
+import 'stats_screen.dart';
+import 'study_item_form.dart';
 import 'subject_form.dart';
+import 'task_form.dart';
 
 typedef Navigate = void Function(int tab, [int? subTab]);
 
@@ -26,15 +34,11 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('منظم دراستي'),
-        actions: [
-          IconButton(
-            tooltip: 'الإعدادات',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => pushPage(context, const SettingsScreen()),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'home-fab',
+        tooltip: 'إضافة',
+        onPressed: () => showQuickAddSheet(context),
+        child: const Icon(Icons.add_rounded, size: 30),
       ),
       body: NowBuilder(
         builder: (context, now) =>
@@ -53,84 +57,334 @@ class _DashboardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
-    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 100),
+      children: [
+        _Hero(now: now, onNavigate: onNavigate),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (store.focus != null) _FocusBanner(now: now),
+              if (store.subjects.isEmpty) const _Onboarding(),
+              const SizedBox(height: 4),
+              const _QuickActions(),
+              _NextClassCard(now: now, onNavigate: onNavigate),
+              _TodaySchedule(now: now, onNavigate: onNavigate),
+              _ReviewsDue(now: now, onNavigate: onNavigate),
+              _UpcomingDeadlines(now: now, onNavigate: onNavigate),
+              _TasksPreview(now: now, onNavigate: onNavigate),
+              _StudyProgress(onNavigate: onNavigate),
+              _ProjectsPreview(now: now, onNavigate: onNavigate),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Hero extends StatelessWidget {
+  const _Hero({required this.now, required this.onNavigate});
+
+  final DateTime now;
+  final Navigate onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
     final name = store.settings.studentName.trim();
     final greeting = now.hour < 12 ? 'صباح الخير' : 'مساء الخير';
+    final stats = StudyStats(store.studySessions, now);
+    final goal = store.settings.dailyGoalMinutes;
+    final system = store.settings.gradingSystem;
+    final summaries = store.subjects.map(store.gradeSummary).toList();
+    final overall = overallPercent(summaries);
+    final gpa = expectedGpa(summaries);
+    final level = system == GradingSystem.gpa
+        ? (gpa == null ? '—' : gpa.toStringAsFixed(2))
+        : formatPercent(overall);
+    const white = Colors.white;
 
-    final notStudied = store.studyItems.where((s) => !s.status.isDone).length;
-    final pendingTasks = store.tasks.where((t) => !t.done).toList();
-    final weekEnd = now.add(const Duration(days: 7));
-    final dueThisWeek = store.assessments
-        .where(
-          (a) =>
-              !a.done && a.dueDate.isAfter(now) && a.dueDate.isBefore(weekEnd),
-        )
-        .length;
-    final overall = overallPercent(store.subjects.map(store.gradeSummary));
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 12, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '$greeting${name.isEmpty ? '' : ' يا $name'} 👋',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          formatLongDate(now),
+                          style: TextStyle(
+                            color: white.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '$greeting${name.isEmpty ? '' : ' يا $name'} 👋',
+                          style: const TextStyle(
+                            color: white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'الإحصائيات',
+                    style: IconButton.styleFrom(
+                      backgroundColor: white.withValues(alpha: 0.16),
+                    ),
+                    icon: const Icon(Icons.insights_rounded, color: white),
+                    onPressed: () => pushPage(context, const StatsScreen()),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'الإعدادات',
+                    style: IconButton.styleFrom(
+                      backgroundColor: white.withValues(alpha: 0.16),
+                    ),
+                    icon: const Icon(Icons.settings_rounded, color: white),
+                    onPressed: () => pushPage(context, const SettingsScreen()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('💡'),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          quoteOfTheDay(now),
+                          style: const TextStyle(
+                            color: white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Text(
-                formatLongDate(now),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: _GlassTile(
+                        onTap: () => pushPage(context, const StatsScreen()),
+                        child: Row(
+                          children: [
+                            ProgressRing(
+                              value: stats.today / goal,
+                              size: 48,
+                              stroke: 5,
+                              color: AppColors.amber,
+                              trackColor: white.withValues(alpha: 0.22),
+                              child: const Text(
+                                '🎯',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FittedBox(
+                                    child: Text(
+                                      '${hoursMinutes(stats.today)} من ${hoursMinutes(goal)}',
+                                      style: const TextStyle(
+                                        color: white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    'مذاكرة النهارده',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: white.withValues(alpha: 0.8),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _GlassTile(
+                        onTap: () => pushPage(context, const StatsScreen()),
+                        child: _GlassValue(
+                          value: '🔥 ${stats.streak}',
+                          label: 'أيام متتالية',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _GlassTile(
+                        onTap: () => onNavigate(4),
+                        child: _GlassValue(
+                          value: level,
+                          label: system == GradingSystem.gpa
+                              ? 'GPA متوقع'
+                              : 'مستواك',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        if (store.subjects.isEmpty) const _Onboarding(),
-        Row(
-          children: [
-            _StatTile(
-              value: '$notStudied',
-              label: 'محاضرات لسه',
-              icon: Icons.menu_book,
-              color: const Color(0xFFF59E0B),
-              onTap: () => onNavigate(2),
-            ),
-            _StatTile(
-              value: '${pendingTasks.length}',
-              label: 'تاسكات',
-              icon: Icons.task_alt,
-              color: const Color(0xFF2E7DD7),
-              onTap: () => onNavigate(3, 0),
-            ),
-            _StatTile(
-              value: '$dueThisWeek',
-              label: 'مواعيد الأسبوع',
-              icon: Icons.event_note,
-              color: const Color(0xFFE53935),
-              onTap: () => onNavigate(3, 1),
-            ),
-            _StatTile(
-              value: formatPercent(overall),
-              label: 'درجاتك',
-              icon: Icons.emoji_events_outlined,
-              color: const Color(0xFF22A45D),
-              onTap: () => onNavigate(4),
-            ),
-          ],
+      ),
+    );
+  }
+}
+
+class _GlassTile extends StatelessWidget {
+  const _GlassTile({required this.child, this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: SizedBox(
+          height: 72,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Center(child: child),
+          ),
         ),
-        _NextClassCard(now: now, onNavigate: onNavigate),
-        _TodaySchedule(now: now, onNavigate: onNavigate),
-        _UpcomingDeadlines(now: now, onNavigate: onNavigate),
-        _TasksPreview(now: now, tasks: pendingTasks, onNavigate: onNavigate),
-        _StudyProgress(onNavigate: onNavigate),
-        _ProjectsPreview(now: now, onNavigate: onNavigate),
+      ),
+    );
+  }
+}
+
+class _GlassValue extends StatelessWidget {
+  const _GlassValue({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _FocusBanner extends StatelessWidget {
+  const _FocusBanner({required this.now});
+
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final focus = store.focus!;
+    final left = focus.remainingSeconds(now);
+    final subject = store.subjectById(focus.subjectId);
+    final resting = focus.phase == FocusPhase.rest;
+    return AppCard(
+      margin: const EdgeInsets.only(top: 14),
+      gradient: resting ? AppColors.tealGradient : AppColors.focusGradient,
+      onTap: () => pushPage(context, const FocusScreen()),
+      child: Row(
+        children: [
+          const Icon(Icons.timer_rounded, color: Colors.white, size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              [
+                if (focus.isPaused)
+                  'الجلسة متوقفة'
+                else if (resting)
+                  'بريك شغال'
+                else
+                  'جلسة مذاكرة شغالة',
+                ?subject?.name,
+              ].join(' • '),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            'فاضل ${durationText(Duration(seconds: left < 60 ? 60 : left))}',
+            style: const TextStyle(color: Colors.white),
+          ),
+          const Icon(Icons.chevron_left_rounded, color: Colors.white),
+        ],
+      ),
     );
   }
 }
@@ -141,107 +395,116 @@ class _Onboarding extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'أهلاً بيك! 🎓',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
+    return AppCard(
+      margin: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Text('🎓', style: TextStyle(fontSize: 30)),
+              const SizedBox(width: 10),
+              Text('أهلاً بيك!', style: theme.textTheme.titleLarge),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'ابدأ بإضافة موادك، وبعدين ضيف الجدول والمحاضرات والكويزات '
+            'والدرجات — وأنا هفكرك بكل حاجة في معادها وأساعدك تذاكر أول بأول.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 6),
-            Text(
-              'ابدأ بإضافة موادك، وبعدين ضيف الجدول والمحاضرات اللي بتنزل والكويزات '
-              'والأسايمنتات والمشاريع والدرجات — وأنا هفكرك بكل حاجة في معادها.',
-              style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: () => pushPage(context, const SubjectForm()),
-                  icon: const Icon(Icons.add),
-                  label: const Text('ضيف أول مادة'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await loadDemoData(
-                      context.read<AppStore>(),
-                      DateTime.now(),
-                    );
-                    if (context.mounted) {
-                      showSnack(
-                        context,
-                        'اتضافت بيانات تجريبية — تقدر تمسحها من الإعدادات',
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.auto_awesome),
-                  label: const Text('جرّب ببيانات تجريبية'),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: () => pushPage(context, const SubjectForm()),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('ضيف أول مادة'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await loadDemoData(context.read<AppStore>(), DateTime.now());
+              if (context.mounted) {
+                showSnack(
+                  context,
+                  'اتضافت بيانات تجريبية — تقدر تمسحها من الإعدادات',
+                );
+              }
+            },
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('جرّب ببيانات تجريبية'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.value,
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String value;
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+class _QuickActions extends StatelessWidget {
+  const _QuickActions();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Expanded(
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-            child: Column(
-              children: [
-                Icon(icon, color: color),
-                const SizedBox(height: 4),
-                FittedBox(
-                  child: Text(
-                    value,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+    final actions = [
+      (
+        'ذاكر',
+        Icons.play_arrow_rounded,
+        AppColors.coral,
+        () => pushPage(context, const FocusScreen()),
+      ),
+      (
+        'محاضرة',
+        Icons.menu_book_rounded,
+        AppColors.primary,
+        () => pushPage(context, const StudyItemForm()),
+      ),
+      (
+        'تاسك',
+        Icons.task_alt_rounded,
+        AppColors.sky,
+        () => pushPage(context, const TaskForm()),
+      ),
+      (
+        'درجة',
+        Icons.emoji_events_rounded,
+        AppColors.teal,
+        () => pushPage(context, const GradeForm()),
+      ),
+      (
+        'المزيد',
+        Icons.apps_rounded,
+        AppColors.orange,
+        () => showQuickAddSheet(context),
+      ),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 4),
+      child: Row(
+        children: [
+          for (final a in actions)
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: a.$4,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    children: [
+                      IconBadge(a.$2, color: a.$3, size: 54, filled: true),
+                      const SizedBox(height: 6),
+                      FittedBox(
+                        child: Text(
+                          a.$1,
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall,
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -260,69 +523,81 @@ class _NextClassCard extends StatelessWidget {
     if (next == null) return const SizedBox.shrink();
     final subject = store.subjectById(next.session.subjectId);
     final color = subjectColor(subject, context);
-    final onColor =
-        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
+    final onColor = AppColors.onColor(color);
     final ongoing = next.isOngoing(now);
     final s = next.session;
-    return Card(
-      color: color,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onNavigate(1),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(s.type.icon, color: onColor, size: 40),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ongoing
-                          ? '${s.type.label} شغالة دلوقتي'
-                          : s.type.nextLabel,
-                      style: TextStyle(color: onColor.withValues(alpha: 0.85)),
-                    ),
-                    Text(
-                      subject?.name ?? '',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: onColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      [
-                        '${friendlyDay(next.start, now)} ${formatMinuteOfDay(s.startMinute)} - ${formatMinuteOfDay(s.endMinute)}',
-                        if (s.location.isNotEmpty) s.location,
-                      ].join(' • '),
-                      style: TextStyle(color: onColor),
-                    ),
-                  ],
-                ),
-              ),
-              if (!ongoing)
-                Column(
-                  children: [
-                    Text(
-                      'بعد',
-                      style: TextStyle(color: onColor.withValues(alpha: 0.85)),
-                    ),
-                    Text(
-                      durationText(next.start.difference(now)),
-                      style: TextStyle(
-                        color: onColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
+    return AppCard(
+      margin: const EdgeInsets.only(top: 14),
+      gradient: AppColors.gradientOf(color),
+      onTap: () => onNavigate(1),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: onColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(s.type.icon, color: onColor, size: 30),
           ),
-        ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ongoing ? '${s.type.label} شغالة دلوقتي' : s.type.nextLabel,
+                  style: TextStyle(
+                    color: onColor.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  subject?.name ?? '',
+                  style: TextStyle(
+                    color: onColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  [
+                    '${friendlyDay(next.start, now)} ${formatMinuteOfDay(s.startMinute)}',
+                    if (s.location.isNotEmpty) s.location,
+                  ].join(' • '),
+                  style: TextStyle(color: onColor),
+                ),
+              ],
+            ),
+          ),
+          if (!ongoing)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: onColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'بعد',
+                    style: TextStyle(
+                      color: onColor.withValues(alpha: 0.85),
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    durationText(next.start.difference(now)),
+                    style: TextStyle(
+                      color: onColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -345,28 +620,59 @@ class _TodaySchedule extends StatelessWidget {
       children: [
         SectionHeader(
           'جدول النهارده',
-          trailing: TextButton(
-            onPressed: () => onNavigate(1),
-            child: const Text('الجدول كله'),
-          ),
+          icon: Icons.today_rounded,
+          trailing: SeeAllButton('الجدول كله', onPressed: () => onNavigate(1)),
         ),
         if (today.isEmpty)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.free_breakfast_outlined),
-              title: Text('مفيش محاضرات النهارده 🎉'),
+          const AppCard(
+            child: Row(
+              children: [
+                Text('🎉', style: TextStyle(fontSize: 24)),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('مفيش محاضرات النهارده — استغله في المذاكرة'),
+                ),
+              ],
             ),
           )
         else
           for (final s in today)
-            Opacity(
-              opacity: s.endMinute <= nowMinute ? 0.5 : 1,
-              child: SessionTile(
-                session: s,
-                highlight:
-                    s.startMinute <= nowMinute && nowMinute < s.endMinute,
-              ),
+            SessionTile(
+              session: s,
+              highlight: s.startMinute <= nowMinute && nowMinute < s.endMinute,
+              attendanceDay: s.startMinute <= nowMinute ? now : null,
             ),
+      ],
+    );
+  }
+}
+
+class _ReviewsDue extends StatelessWidget {
+  const _ReviewsDue({required this.now, required this.onNavigate});
+
+  final DateTime now;
+  final Navigate onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final due = context.watch<AppStore>().dueReviews(now);
+    if (due.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeader(
+          'مراجعات النهارده (${due.length})',
+          icon: Icons.replay_circle_filled_rounded,
+          trailing: due.length > 3
+              ? SeeAllButton('الكل', onPressed: () => onNavigate(2))
+              : null,
+        ),
+        AppCard(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            children: [for (final i in due.take(3)) ReviewTile(item: i)],
+          ),
+        ),
       ],
     );
   }
@@ -381,6 +687,7 @@ class _UpcomingDeadlines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
+    if (store.subjects.isEmpty) return const SizedBox.shrink();
     final horizon = now.add(const Duration(days: 14));
     final items = <({DateTime due, Widget tile})>[];
     for (final a in store.assessments) {
@@ -395,20 +702,23 @@ class _UpcomingDeadlines extends StatelessWidget {
       if (p.submitted || deadline == null || deadline.isAfter(horizon)) {
         continue;
       }
-      final subject = store.subjectById(p.subjectId);
-      final color = subjectColor(subject, context);
+      final color = subjectColor(store.subjectById(p.subjectId), context);
       items.add((
         due: deadline,
         tile: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.15),
-            child: Icon(Icons.rocket_launch_outlined, color: color),
+          contentPadding: const EdgeInsetsDirectional.only(start: 14, end: 12),
+          leading: IconBadge(Icons.rocket_launch_rounded, color: color),
+          title: Text(
+            'مشروع: ${p.title}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          title: Text('مشروع: ${p.title}'),
           subtitle: Text(
             'خلصت ${(p.progress * 100).round()}% • ${friendlyDateTime(deadline, now)}',
           ),
-          trailing: CountdownPill(due: deadline, now: now),
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 124),
+            child: CountdownPill(due: deadline, now: now),
+          ),
           onTap: () => pushPage(context, ProjectDetailScreen(projectId: p.id)),
         ),
       ));
@@ -420,21 +730,23 @@ class _UpcomingDeadlines extends StatelessWidget {
       children: [
         SectionHeader(
           'كويزات وتسليمات قريبة',
-          trailing: TextButton(
-            onPressed: () => pushPage(context, const AssessmentForm()),
-            child: const Text('إضافة'),
-          ),
+          icon: Icons.event_note_rounded,
+          trailing: SeeAllButton('الكل', onPressed: () => onNavigate(3, 1)),
         ),
         if (items.isEmpty)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.beach_access_outlined),
-              title: Text('مفيش حاجة في الأسبوعين الجايين'),
+          const AppCard(
+            child: Row(
+              children: [
+                Text('🏖️', style: TextStyle(fontSize: 24)),
+                SizedBox(width: 12),
+                Expanded(child: Text('مفيش حاجة في الأسبوعين الجايين')),
+              ],
             ),
           )
         else
-          Card(
-            child: Column(children: [for (final i in items.take(6)) i.tile]),
+          AppCard(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(children: [for (final i in items.take(5)) i.tile]),
           ),
       ],
     );
@@ -442,42 +754,40 @@ class _UpcomingDeadlines extends StatelessWidget {
 }
 
 class _TasksPreview extends StatelessWidget {
-  const _TasksPreview({
-    required this.now,
-    required this.tasks,
-    required this.onNavigate,
-  });
+  const _TasksPreview({required this.now, required this.onNavigate});
 
   final DateTime now;
-  final List<TaskItem> tasks;
   final Navigate onNavigate;
 
   @override
   Widget build(BuildContext context) {
+    final tasks = context
+        .watch<AppStore>()
+        .tasks
+        .where((t) => !t.done)
+        .toList();
     if (tasks.isEmpty) return const SizedBox.shrink();
-    final sorted = [...tasks]
-      ..sort((a, b) {
-        if (a.dueDate != null && b.dueDate != null) {
-          return a.dueDate!.compareTo(b.dueDate!);
-        }
-        if (a.dueDate != null) return -1;
-        if (b.dueDate != null) return 1;
-        return b.priority.index.compareTo(a.priority.index);
-      });
+    tasks.sort((a, b) {
+      if (a.dueDate != null && b.dueDate != null) {
+        return a.dueDate!.compareTo(b.dueDate!);
+      }
+      if (a.dueDate != null) return -1;
+      if (b.dueDate != null) return 1;
+      return b.priority.index.compareTo(a.priority.index);
+    });
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionHeader(
-          'تاسكات عليك',
-          trailing: TextButton(
-            onPressed: () => onNavigate(3, 0),
-            child: Text('الكل (${tasks.length})'),
-          ),
+          'تاسكات عليك (${tasks.length})',
+          icon: Icons.checklist_rounded,
+          trailing: SeeAllButton('الكل', onPressed: () => onNavigate(3, 0)),
         ),
-        Card(
+        AppCard(
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
             children: [
-              for (final t in sorted.take(5)) TaskTile(task: t, now: now),
+              for (final t in tasks.take(4)) TaskTile(task: t, now: now),
             ],
           ),
         ),
@@ -494,37 +804,43 @@ class _StudyProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
+    final theme = Theme.of(context);
     final rows = <Widget>[];
     for (final s in store.subjects) {
       final items = store.studyItemsFor(s.id);
       if (items.isEmpty) continue;
       final done = items.where((i) => i.status.isDone).length;
-      final color = Color(s.colorValue);
       rows.add(
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 110,
-                child: Text(s.name, overflow: TextOverflow.ellipsis),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      s.name,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    done == items.length
+                        ? 'خلصتها كلها ✓'
+                        : 'فاضل ${items.length - done} من ${items.length}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: RoundedProgress(
-                  value: done / items.length,
-                  color: color,
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  done == items.length
-                      ? 'خلصت ✓'
-                      : 'فاضل ${items.length - done}',
-                  textAlign: TextAlign.end,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+              const SizedBox(height: 6),
+              RoundedProgress(
+                value: done / items.length,
+                color: Color(s.colorValue),
+                height: 9,
               ),
             ],
           ),
@@ -536,18 +852,11 @@ class _StudyProgress extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionHeader(
-          'المذاكرة',
-          trailing: TextButton(
-            onPressed: () => onNavigate(2),
-            child: const Text('التفاصيل'),
-          ),
+          'المذاكرة وصلت لحد فين',
+          icon: Icons.auto_stories_rounded,
+          trailing: SeeAllButton('التفاصيل', onPressed: () => onNavigate(2)),
         ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(children: rows),
-          ),
-        ),
+        AppCard(child: Column(children: rows)),
       ],
     );
   }
@@ -572,10 +881,8 @@ class _ProjectsPreview extends StatelessWidget {
       children: [
         SectionHeader(
           'المشاريع',
-          trailing: TextButton(
-            onPressed: () => onNavigate(3, 3),
-            child: const Text('الكل'),
-          ),
+          icon: Icons.rocket_launch_rounded,
+          trailing: SeeAllButton('الكل', onPressed: () => onNavigate(3, 3)),
         ),
         for (final p in projects.take(3)) ProjectCard(project: p, now: now),
       ],

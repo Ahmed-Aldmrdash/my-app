@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -58,7 +59,7 @@ class NotificationService {
 
       await _plugin.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('@drawable/ic_stat_notify'),
           iOS: DarwinInitializationSettings(
             requestAlertPermission: false,
             requestBadgePermission: false,
@@ -194,6 +195,11 @@ class NotificationService {
         'تنبيهات الكويزات والأسايمنتات والمشاريع والتاسكات',
       ),
       ReminderChannel.daily => ('daily', 'ملخص اليوم', 'ملخص الصبح لخطة اليوم'),
+      ReminderChannel.focus => (
+        'focus',
+        'مؤقت المذاكرة',
+        'تنبيه نهاية جلسة المذاكرة والبريك',
+      ),
     };
     return NotificationDetails(
       android: AndroidNotificationDetails(
@@ -207,6 +213,7 @@ class NotificationService {
             ? Priority.defaultPriority
             : Priority.high,
         styleInformation: BigTextStyleInformation(body),
+        color: const Color(0xFF6C5CE7),
         category: channel == ReminderChannel.daily
             ? null
             : AndroidNotificationCategory.reminder,

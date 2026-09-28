@@ -8,9 +8,11 @@ class Subject {
     this.code = '',
     this.instructor = '',
     this.assistant = '',
-    this.colorValue = 0xFF3F51B5,
+    this.colorValue = 0xFF6C5CE7,
     this.totalMarks = 100,
     this.finalExamMarks = 60,
+    this.creditHours = 3,
+    this.absenceLimit = 0,
     this.notes = '',
   });
 
@@ -31,33 +33,16 @@ class Subject {
   /// How much of [totalMarks] belongs to the final exam. The rest is
   /// coursework (أعمال السنة).
   final double finalExamMarks;
+
+  /// Credit hours, used to weight the GPA.
+  final int creditHours;
+
+  /// Allowed absences before being barred (حرمان). 0 means not tracked.
+  final int absenceLimit;
   final String notes;
 
   double get courseworkMarks =>
       (totalMarks - finalExamMarks).clamp(0, totalMarks).toDouble();
-
-  Subject copyWith({
-    String? name,
-    String? code,
-    String? instructor,
-    String? assistant,
-    int? colorValue,
-    double? totalMarks,
-    double? finalExamMarks,
-    String? notes,
-  }) {
-    return Subject(
-      id: id,
-      name: name ?? this.name,
-      code: code ?? this.code,
-      instructor: instructor ?? this.instructor,
-      assistant: assistant ?? this.assistant,
-      colorValue: colorValue ?? this.colorValue,
-      totalMarks: totalMarks ?? this.totalMarks,
-      finalExamMarks: finalExamMarks ?? this.finalExamMarks,
-      notes: notes ?? this.notes,
-    );
-  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -68,6 +53,8 @@ class Subject {
     'color': colorValue,
     'totalMarks': totalMarks,
     'finalExamMarks': finalExamMarks,
+    'creditHours': creditHours,
+    'absenceLimit': absenceLimit,
     'notes': notes,
   };
 
@@ -77,9 +64,11 @@ class Subject {
     code: readString(j['code']),
     instructor: readString(j['instructor']),
     assistant: readString(j['assistant']),
-    colorValue: readInt(j['color'], 0xFF3F51B5),
+    colorValue: readInt(j['color'], 0xFF6C5CE7),
     totalMarks: readDouble(j['totalMarks'], 100),
     finalExamMarks: readDouble(j['finalExamMarks'], 60),
+    creditHours: readInt(j['creditHours'], 3),
+    absenceLimit: readInt(j['absenceLimit']),
     notes: readString(j['notes']),
   );
 }

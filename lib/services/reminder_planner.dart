@@ -3,7 +3,7 @@ import '../models/models.dart';
 import '../utils/formatters.dart';
 import '../utils/labels.dart';
 
-enum ReminderChannel { classes, deadlines, daily }
+enum ReminderChannel { classes, deadlines, daily, focus }
 
 /// Where tapping a notification should take the user.
 class ReminderTarget {
@@ -14,6 +14,7 @@ class ReminderTarget {
   static const assignments = 'tab:3:2';
   static const projects = 'tab:3:3';
   static const home = 'tab:0';
+  static const focus = 'focus';
 }
 
 /// A notification the app wants shown at [when].
@@ -80,7 +81,28 @@ List<PlannedReminder> planReminders(
   int limit = 60,
 }) {
   final settings = store.settings;
-  if (!settings.notificationsEnabled) return const [];
+
+  // The focus timer alarm always goes out, even with reminders turned off:
+  // the student started it on purpose.
+  final focusAlarm = <PlannedReminder>[];
+  final focus = store.focus;
+  if (focus != null && focus.isRunning && focus.endsAt!.isAfter(now)) {
+    final subject = store.subjectById(focus.subjectId);
+    final isFocus = focus.phase == FocusPhase.focus;
+    focusAlarm.add(
+      PlannedReminder(
+        when: focus.endsAt!,
+        title: isFocus ? '🎉 برافو! خلصت جلسة المذاكرة' : '⏰ البريك خلص',
+        body: isFocus
+            ? 'ذاكرت ${durationText(Duration(seconds: focus.plannedSeconds))}'
+                  '${subject == null ? '' : ' ${subject.name}'} — خد بريك صغير وارجع'
+            : 'يلا نرجع نذاكر 💪',
+        channel: ReminderChannel.focus,
+        payload: ReminderTarget.focus,
+      ),
+    );
+  }
+  if (!settings.notificationsEnabled) return focusAlarm;
 
   final weekly = <PlannedReminder>[];
   for (final session in store.sessions) {
@@ -206,7 +228,7 @@ List<PlannedReminder> planReminders(
   }
 
   oneOff.sort((a, b) => a.when.compareTo(b.when));
-  return [...weekly, ...oneOff].take(limit).toList();
+  return [...focusAlarm, ...weekly, ...oneOff].take(limit).toList();
 }
 
 /// The text of the morning summary for [day].
@@ -238,6 +260,13 @@ String dailySummaryBody(AppStore store, DateTime day) {
   if (tasksToday > 0) {
     lines.add(
       '✅ ${countText(tasksToday, 'تاسك', 'تاسكين', 'تاسكات', 'تاسك')} لازم يخلصوا',
+    );
+  }
+
+  final reviews = store.dueReviews(day).length;
+  if (reviews > 0) {
+    lines.add(
+      '🔁 ${countText(reviews, 'مراجعة', 'مراجعتين', 'مراجعات', 'مراجعة')} مستنياك النهارده',
     );
   }
 

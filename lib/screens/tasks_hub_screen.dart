@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../data/app_store.dart';
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
@@ -78,20 +79,47 @@ class _TasksHubScreenState extends State<TasksHubScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('المهام والتسليمات'),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'تاسكات'),
-            Tab(text: 'كويزات'),
-            Tab(text: 'أسايمنتات'),
-            Tab(text: 'مشاريع'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            height: 48,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TabBar(
+              controller: _tabs,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              labelColor: Theme.of(context).colorScheme.onPrimary,
+              labelPadding: EdgeInsets.zero,
+              tabs: [
+                for (final label in const [
+                  'تاسكات',
+                  'كويزات',
+                  'أسايمنتات',
+                  'مشاريع',
+                ])
+                  Tab(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: FittedBox(child: Text(label)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'tasks-fab',
         onPressed: _add,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: Text(labels[_tabs.index]),
       ),
       body: TabBarView(
@@ -159,10 +187,10 @@ class _TasksTabState extends State<_TasksTab> {
     }
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 96),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.only(top: 4),
           child: SegmentedButton<bool>(
             segments: [
               ButtonSegment(
@@ -177,24 +205,45 @@ class _TasksTabState extends State<_TasksTab> {
         ),
         if (!_showDone && pending.isEmpty)
           const EmptyState(
-            icon: Icons.task_alt,
+            icon: Icons.task_alt_rounded,
+            color: AppColors.success,
             title: 'مفيش تاسكات عليك 👌',
             message: 'ضيف أي حاجة عايز تعملها وحدد لها معاد لو حابب يفكرك',
           ),
         if (_showDone && done.isEmpty)
           const EmptyState(
-            icon: Icons.inbox_outlined,
+            icon: Icons.inbox_rounded,
             title: 'لسه مخلصتش تاسكات',
           ),
         if (!_showDone)
           for (final entry in groups.entries)
             if (entry.value.isNotEmpty) ...[
               SectionHeader('${entry.key} (${entry.value.length})'),
-              for (final t in entry.value) _dismissible(context, store, t, now),
+              AppCard(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                clip: true,
+                color: entry.key == 'متأخرة'
+                    ? AppColors.danger.withValues(alpha: 0.06)
+                    : null,
+                child: Column(
+                  children: [
+                    for (final t in entry.value)
+                      _dismissible(context, store, t, now),
+                  ],
+                ),
+              ),
             ],
-        if (_showDone) ...[
+        if (_showDone && done.isNotEmpty) ...[
           const SizedBox(height: 8),
-          for (final t in done) _dismissible(context, store, t, now),
+          AppCard(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            clip: true,
+            child: Column(
+              children: [
+                for (final t in done) _dismissible(context, store, t, now),
+              ],
+            ),
+          ),
         ],
       ],
     );
@@ -213,7 +262,7 @@ class _TasksTabState extends State<_TasksTab> {
         color: Theme.of(context).colorScheme.errorContainer,
         alignment: AlignmentDirectional.centerEnd,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Icon(Icons.delete_outline),
+        child: const Icon(Icons.delete_outline_rounded),
       ),
       onDismissed: (_) {
         store.deleteTask(t.id);
@@ -252,31 +301,45 @@ class _AssessmentsTab extends StatelessWidget {
 
         if (items.isEmpty) {
           return EmptyState(
-            icon: isAssignments
-                ? Icons.assignment_outlined
-                : Icons.quiz_outlined,
+            icon: isAssignments ? Icons.assignment_rounded : Icons.quiz_rounded,
             title: isAssignments
                 ? 'مفيش أسايمنتات'
                 : 'مفيش كويزات ولا امتحانات',
             message: 'ضيفها بمعادها وهفكرك قبلها، ولما تخلص سجل درجتك',
           );
         }
+        Widget group(List<Assessment> list, {Color? color}) => AppCard(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          color: color,
+          child: Column(
+            children: [
+              for (final a in list) AssessmentTile(assessment: a, now: now),
+            ],
+          ),
+        );
         return ListView(
-          padding: const EdgeInsets.only(bottom: 96),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
           children: [
             if (overdue.isNotEmpty) ...[
               SectionHeader(
                 isAssignments ? 'فات معادها — سلمتها؟' : 'فات معادها — خلصت؟',
+                icon: Icons.warning_amber_rounded,
               ),
-              for (final a in overdue) AssessmentTile(assessment: a, now: now),
+              group(overdue, color: AppColors.danger.withValues(alpha: 0.06)),
             ],
             if (upcoming.isNotEmpty) ...[
-              SectionHeader('الجاية (${upcoming.length})'),
-              for (final a in upcoming) AssessmentTile(assessment: a, now: now),
+              SectionHeader(
+                'الجاية (${upcoming.length})',
+                icon: Icons.upcoming_rounded,
+              ),
+              group(upcoming),
             ],
             if (done.isNotEmpty) ...[
-              SectionHeader(isAssignments ? 'اتسلمت' : 'خلصت'),
-              for (final a in done) AssessmentTile(assessment: a, now: now),
+              SectionHeader(
+                isAssignments ? 'اتسلمت' : 'خلصت',
+                icon: Icons.task_alt_rounded,
+              ),
+              group(done),
             ],
           ],
         );
@@ -301,20 +364,20 @@ class _ProjectsTab extends StatelessWidget {
     final submitted = store.projects.where((p) => p.submitted).toList();
     if (store.projects.isEmpty) {
       return const EmptyState(
-        icon: Icons.rocket_launch_outlined,
+        icon: Icons.rocket_launch_rounded,
         title: 'مفيش مشاريع',
         message: 'ضيف مشروعك وقسمه لمراحل، وتابع وصلت لحد فين',
       );
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
         if (active.isNotEmpty) ...[
-          const SectionHeader('شغال عليها'),
+          const SectionHeader('شغال عليها', icon: Icons.construction_rounded),
           for (final p in active) ProjectCard(project: p, now: now),
         ],
         if (submitted.isNotEmpty) ...[
-          const SectionHeader('اتسلمت'),
+          const SectionHeader('اتسلمت', icon: Icons.task_alt_rounded),
           for (final p in submitted) ProjectCard(project: p, now: now),
         ],
       ],

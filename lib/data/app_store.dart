@@ -25,6 +25,9 @@ class AppStore extends ChangeNotifier {
   final List<Assessment> _assessments = [];
   final List<Project> _projects = [];
   final List<GradeEntry> _grades = [];
+  final List<StudySession> _studySessions = [];
+  final List<AttendanceRecord> _attendance = [];
+  FocusState? _focus;
   AppSettings _settings = const AppSettings();
   Map<String, Subject> _subjectIndex = {};
 
@@ -38,9 +41,17 @@ class AppStore extends ChangeNotifier {
       UnmodifiableListView(_assessments);
   UnmodifiableListView<Project> get projects => UnmodifiableListView(_projects);
   UnmodifiableListView<GradeEntry> get grades => UnmodifiableListView(_grades);
+  UnmodifiableListView<StudySession> get studySessions =>
+      UnmodifiableListView(_studySessions);
+  UnmodifiableListView<AttendanceRecord> get attendance =>
+      UnmodifiableListView(_attendance);
+
+  /// The focus timer, when one is running or paused.
+  FocusState? get focus => _focus;
   AppSettings get settings => _settings;
 
   bool get isEmpty =>
+      _studySessions.isEmpty &&
       _subjects.isEmpty &&
       _tasks.isEmpty &&
       _projects.isEmpty &&
@@ -76,6 +87,9 @@ class AppStore extends ChangeNotifier {
     'assessments': _assessments.map((e) => e.toJson()).toList(),
     'projects': _projects.map((e) => e.toJson()).toList(),
     'grades': _grades.map((e) => e.toJson()).toList(),
+    'studySessions': _studySessions.map((e) => e.toJson()).toList(),
+    'attendance': _attendance.map((e) => e.toJson()).toList(),
+    'focus': _focus?.toJson(),
     'settings': _settings.toJson(),
   };
 
@@ -119,6 +133,13 @@ class AppStore extends ChangeNotifier {
     _grades
       ..clear()
       ..addAll(readList(j['grades'], GradeEntry.fromJson));
+    _studySessions
+      ..clear()
+      ..addAll(readList(j['studySessions'], StudySession.fromJson));
+    _attendance
+      ..clear()
+      ..addAll(readList(j['attendance'], AttendanceRecord.fromJson));
+    _focus = FocusState.fromJson(j['focus']);
     final s = j['settings'];
     _settings = s is Map
         ? AppSettings.fromJson(Map<String, dynamic>.from(s))
@@ -233,6 +254,19 @@ class AppStore extends ChangeNotifier {
     _studyItems.removeWhere((e) => e.subjectId == id);
     _assessments.removeWhere((e) => e.subjectId == id);
     _grades.removeWhere((e) => e.subjectId == id);
+    _attendance.removeWhere((e) => e.subjectId == id);
+    for (var i = 0; i < _studySessions.length; i++) {
+      final s = _studySessions[i];
+      if (s.subjectId == id) {
+        _studySessions[i] = StudySession(
+          id: s.id,
+          startedAt: s.startedAt,
+          minutes: s.minutes,
+          note: s.note,
+        );
+      }
+    }
+    if (_focus?.subjectId == id) _focus = null;
     for (var i = 0; i < _tasks.length; i++) {
       final t = _tasks[i];
       if (t.subjectId == id) {
@@ -294,6 +328,19 @@ class AppStore extends ChangeNotifier {
     _studyItems[i] = _studyItems[i].withStatus(status);
     return _changed();
   }
+
+  /// Records one more spaced review of a lecture.
+  Future<void> markReviewed(String id) {
+    final i = _studyItems.indexWhere((e) => e.id == id);
+    if (i < 0) return Future.value();
+    _studyItems[i] = _studyItems[i].reviewed();
+    return _changed();
+  }
+
+  /// Lectures whose next spaced review is due today or earlier.
+  List<StudyItem> dueReviews(DateTime now) =>
+      _studyItems.where((s) => s.isReviewDue(now)).toList()
+        ..sort((a, b) => a.nextReviewDate!.compareTo(b.nextReviewDate!));
 
   Future<void> deleteStudyItem(String id) {
     _studyItems.removeWhere((e) => e.id == id);
@@ -416,6 +463,148 @@ class AppStore extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
+  // Study time & focus timer
+
+  Future<void> saveStudySession(StudySession s) {
+    _upsert(_studySessions, s, (e) => e.id);
+    return _changed();
+  }
+
+  Future<void> deleteStudySession(String id) {
+    _studySessions.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  Future<void> startFocus({
+    required FocusPhase phase,
+    required int minutes,
+    String? subjectId,
+    String? studyItemId,
+    DateTime? now,
+  }) {
+    final at = now ?? DateTime.now();
+    final seconds = minutes * 60;
+    _focus = FocusState(
+      phase: phase,
+      subjectId: subjectId,
+      studyItemId: studyItemId,
+      plannedSeconds: seconds,
+      startedAt: at,
+      endsAt: at.add(Duration(seconds: seconds)),
+    );
+    return _changed();
+  }
+
+  Future<void> pauseFocus([DateTime? now]) {
+    final f = _focus;
+    if (f == null || !f.isRunning) return Future.value();
+    _focus = f.paused(now ?? DateTime.now());
+    return _changed();
+  }
+
+  Future<void> resumeFocus([DateTime? now]) {
+    final f = _focus;
+    if (f == null || f.isRunning) return Future.value();
+    _focus = f.resumed(now ?? DateTime.now());
+    return _changed();
+  }
+
+  /// Stops the timer early. Focused time of a minute or more is logged.
+  Future<StudySession?> stopFocus([DateTime? now]) async {
+    final f = _focus;
+    if (f == null) return null;
+    _focus = null;
+    StudySession? logged;
+    if (f.phase == FocusPhase.focus) {
+      final minutes = (f.elapsedSeconds(now ?? DateTime.now()) / 60).round();
+      if (minutes >= 1) logged = _logFocus(f, minutes);
+    }
+    await _changed();
+    return logged;
+  }
+
+  /// Finishes the running phase if its time is up and returns which phase
+  /// finished. A finished focus phase is logged as study time.
+  Future<FocusPhase?> completeFocusIfDue([DateTime? now]) async {
+    final f = _focus;
+    if (f == null || !f.isFinished(now ?? DateTime.now())) return null;
+    _focus = null;
+    if (f.phase == FocusPhase.focus) {
+      _logFocus(f, (f.plannedSeconds / 60).round());
+    }
+    await _changed();
+    return f.phase;
+  }
+
+  StudySession _logFocus(FocusState f, int minutes) {
+    final session = StudySession(
+      id: newId(),
+      subjectId: f.subjectId,
+      studyItemId: f.studyItemId,
+      startedAt: f.startedAt,
+      minutes: minutes,
+    );
+    _studySessions.add(session);
+    // Studying a lecture that was "not started" moves it to "in progress".
+    final i = _studyItems.indexWhere((e) => e.id == f.studyItemId);
+    if (i >= 0 && _studyItems[i].status == StudyStatus.notStarted) {
+      _studyItems[i] = _studyItems[i].withStatus(StudyStatus.inProgress);
+    }
+    return session;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attendance
+
+  /// The attendance recorded for [sessionId] on [day], if any.
+  AttendanceRecord? attendanceFor(String sessionId, DateTime day) {
+    for (final a in _attendance) {
+      if (a.sessionId == sessionId && _sameDay(a.date, day)) return a;
+    }
+    return null;
+  }
+
+  List<AttendanceRecord> attendanceOf(String subjectId) =>
+      _attendance.where((a) => a.subjectId == subjectId).toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+
+  /// Marks a timetable slot on [day] as attended or missed, replacing any
+  /// earlier record for it.
+  Future<void> setAttendance(
+    ClassSession session,
+    DateTime day, {
+    required bool present,
+  }) {
+    final existing = attendanceFor(session.id, day);
+    _upsert(
+      _attendance,
+      AttendanceRecord(
+        id: existing?.id ?? newId(),
+        subjectId: session.subjectId,
+        sessionId: session.id,
+        type: session.type,
+        date: DateTime(day.year, day.month, day.day),
+        present: present,
+      ),
+      (e) => e.id,
+    );
+    return _changed();
+  }
+
+  Future<void> saveAttendance(AttendanceRecord a) {
+    _upsert(_attendance, a, (e) => e.id);
+    return _changed();
+  }
+
+  Future<void> deleteAttendance(String id) {
+    _attendance.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  // ---------------------------------------------------------------------------
   // Settings & data
 
   Future<void> updateSettings(AppSettings s) {
@@ -432,6 +621,9 @@ class AppStore extends ChangeNotifier {
     _assessments.clear();
     _projects.clear();
     _grades.clear();
+    _studySessions.clear();
+    _attendance.clear();
+    _focus = null;
     return _changed();
   }
 }

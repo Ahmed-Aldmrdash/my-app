@@ -11,6 +11,17 @@ const weekdayNames = <int, String>{
   DateTime.friday: 'الجمعة',
 };
 
+/// Short Egyptian day names for tight spaces (charts, chips).
+const weekdayShortNames = <int, String>{
+  DateTime.saturday: 'سبت',
+  DateTime.sunday: 'حد',
+  DateTime.monday: 'اتنين',
+  DateTime.tuesday: 'تلات',
+  DateTime.wednesday: 'أربع',
+  DateTime.thursday: 'خميس',
+  DateTime.friday: 'جمعة',
+};
+
 /// The university week, Saturday first.
 const weekOrder = <int>[
   DateTime.saturday,

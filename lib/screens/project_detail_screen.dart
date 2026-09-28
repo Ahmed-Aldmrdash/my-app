@@ -177,7 +177,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     ),
                     trailing: p.submitted
                         ? null
-                        : CountdownPill(due: p.deadline!, now: now),
+                        : ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 124),
+                            child: CountdownPill(due: p.deadline!, now: now),
+                          ),
                   ),
                 if (p.team.isNotEmpty)
                   ListTile(

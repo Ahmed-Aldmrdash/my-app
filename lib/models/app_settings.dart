@@ -2,6 +2,15 @@ import '../utils/json.dart';
 
 enum AppThemeMode { system, light, dark }
 
+/// How marks are turned into a grade.
+enum GradingSystem {
+  /// ممتاز / جيد جداً / جيد / مقبول
+  percentage,
+
+  /// Credit-hour system with letter grades and a GPA.
+  gpa,
+}
+
 class AppSettings {
   const AppSettings({
     this.studentName = '',
@@ -11,6 +20,10 @@ class AppSettings {
     this.dailySummaryMinute = 8 * 60,
     this.themeMode = AppThemeMode.system,
     this.askedPermissions = false,
+    this.gradingSystem = GradingSystem.percentage,
+    this.dailyGoalMinutes = 120,
+    this.focusMinutes = 25,
+    this.breakMinutes = 5,
   });
 
   final String studentName;
@@ -28,6 +41,14 @@ class AppSettings {
 
   /// Whether the first-launch permission prompt was already shown.
   final bool askedPermissions;
+  final GradingSystem gradingSystem;
+
+  /// Target study time per day, in minutes.
+  final int dailyGoalMinutes;
+
+  /// Default focus and break lengths for the timer.
+  final int focusMinutes;
+  final int breakMinutes;
 
   AppSettings copyWith({
     String? studentName,
@@ -37,6 +58,10 @@ class AppSettings {
     int? dailySummaryMinute,
     AppThemeMode? themeMode,
     bool? askedPermissions,
+    GradingSystem? gradingSystem,
+    int? dailyGoalMinutes,
+    int? focusMinutes,
+    int? breakMinutes,
   }) => AppSettings(
     studentName: studentName ?? this.studentName,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -45,6 +70,10 @@ class AppSettings {
     dailySummaryMinute: dailySummaryMinute ?? this.dailySummaryMinute,
     themeMode: themeMode ?? this.themeMode,
     askedPermissions: askedPermissions ?? this.askedPermissions,
+    gradingSystem: gradingSystem ?? this.gradingSystem,
+    dailyGoalMinutes: dailyGoalMinutes ?? this.dailyGoalMinutes,
+    focusMinutes: focusMinutes ?? this.focusMinutes,
+    breakMinutes: breakMinutes ?? this.breakMinutes,
   );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +84,10 @@ class AppSettings {
     'dailySummaryMinute': dailySummaryMinute,
     'themeMode': themeMode.name,
     'askedPermissions': askedPermissions,
+    'gradingSystem': gradingSystem.name,
+    'dailyGoalMinutes': dailyGoalMinutes,
+    'focusMinutes': focusMinutes,
+    'breakMinutes': breakMinutes,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -69,5 +102,13 @@ class AppSettings {
       AppThemeMode.system,
     ),
     askedPermissions: readBool(j['askedPermissions']),
+    gradingSystem: enumByName(
+      GradingSystem.values,
+      j['gradingSystem'],
+      GradingSystem.percentage,
+    ),
+    dailyGoalMinutes: readInt(j['dailyGoalMinutes'], 120).clamp(10, 16 * 60),
+    focusMinutes: readInt(j['focusMinutes'], 25).clamp(1, 180),
+    breakMinutes: readInt(j['breakMinutes'], 5).clamp(1, 60),
   );
 }

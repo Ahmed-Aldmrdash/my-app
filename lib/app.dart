@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'data/app_store.dart';
 import 'models/models.dart';
 import 'screens/home_shell.dart';
+import 'theme/app_theme.dart';
 
 class StudyPlannerApp extends StatelessWidget {
   const StudyPlannerApp({super.key, required this.store});
@@ -35,39 +36,4 @@ class StudyPlannerApp extends StatelessWidget {
       ),
     );
   }
-}
-
-ThemeData buildTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF3F51B5),
-    brightness: brightness,
-  );
-  return ThemeData(
-    colorScheme: scheme,
-    useMaterial3: true,
-    scaffoldBackgroundColor: scheme.surface,
-    appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
-      surfaceTintColor: Colors.transparent,
-      centerTitle: false,
-    ),
-    cardTheme: CardThemeData(
-      elevation: 0,
-      color: scheme.surfaceContainerLow,
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-    ),
-    floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: scheme.primary,
-      foregroundColor: scheme.onPrimary,
-    ),
-  );
 }
