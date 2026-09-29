@@ -1,0 +1,37 @@
+{
+    "name": "منظم دراستي",
+    "short_name": "منظم دراستي",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#F5F4FB",
+    "theme_color": "#6C5CE7",
+    "description": "نظّم حياتك الجامعية: الجدول، المذاكرة، التاسكات، الكويزات، المشاريع والدرجات.",
+    "lang": "ar",
+    "dir": "rtl",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

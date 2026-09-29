@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Syncing with the student's other devices -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Reminders for lectures, quizzes and deadlines -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>

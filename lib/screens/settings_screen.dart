@@ -12,6 +12,8 @@ import '../utils/formatters.dart';
 import '../utils/labels.dart';
 import '../utils/study_stats.dart';
 import '../widgets/common.dart';
+import '../sync/sync_service.dart';
+import 'sync_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -116,7 +118,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context,
       'تمسح كل البيانات؟',
       message:
-          'المواد والجدول والمحاضرات والتاسكات والدرجات… كله هيتمسح ومش هيرجع. '
+          'المواد والجدول والمحاضرات والتاسكات والدرجات… كله هيتمسح ومش هيرجع'
+          '${context.read<SyncService>().isSignedIn ? ' ومن كل أجهزتك المتزامنة' : ''}. '
           'خد نسخة احتياطية الأول لو محتاجها.',
     );
     if (!ok) return;
@@ -165,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
+    final sync = context.watch<SyncService>();
     final s = store.settings;
     final theme = Theme.of(context);
     final isAndroid =
@@ -238,6 +242,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          const SectionHeader(
+            'المزامنة بين الأجهزة',
+            icon: Icons.devices_rounded,
+          ),
+          group([
+            tile(
+              icon: sync.isSignedIn
+                  ? Icons.cloud_done_rounded
+                  : Icons.cloud_upload_rounded,
+              color: sync.state == SyncState.error
+                  ? AppColors.danger
+                  : AppColors.sky,
+              title: 'الموبايل والكمبيوتر على نفس البيانات',
+              subtitle: switch (sync.state) {
+                SyncState.notConfigured => 'مش متفعلة — دوس هنا وجهّزها',
+                SyncState.signedOut => 'ادخل بحسابك',
+                SyncState.error => sync.error,
+                SyncState.syncing => 'بزامن…',
+                SyncState.connecting => 'بتصل…',
+                SyncState.idle => 'متفعلة ✓ ${sync.email ?? ''}',
+              },
+              trailing: const Icon(Icons.chevron_left_rounded),
+              onTap: () => pushPage(context, const SyncScreen()),
+            ),
+          ]),
           const SectionHeader('المذاكرة', icon: Icons.auto_stories_rounded),
           group([
             tile(
@@ -514,7 +543,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await confirmDelete(
                       context,
                       'تبدل بياناتك ببيانات تجريبية؟',
-                      message: 'بياناتك الحالية هتتمسح.',
+                      message: sync.isSignedIn
+                          ? 'بياناتك الحالية هتتمسح من الجهاز ده ومن كل '
+                                'أجهزتك المتزامنة.'
+                          : 'بياناتك الحالية هتتمسح.',
                       confirmLabel: 'تبديل',
                     );
                 if (!ok) return;
@@ -534,7 +566,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'منظم دراستي • كل بياناتك محفوظة على موبايلك بس 🔒',
+              sync.isSignedIn
+                  ? 'منظم دراستي • بياناتك على أجهزتك وحسابك إنت بس 🔒'
+                  : 'منظم دراستي • بياناتك محفوظة على الجهاز ده بس 🔒',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

@@ -1,20 +1,28 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
+import '../sync/sync_doc.dart';
 import '../utils/grade_calculator.dart';
 import '../utils/ids.dart';
 import '../utils/json.dart';
 import 'storage.dart';
 
+/// Every record of the sample semester has an id starting with this.
+const demoIdPrefix = 'demo-';
+
 /// Holds all of the student's data, persists it after every change and
 /// notifies the UI.
+///
+/// Every change is also recorded in [SyncMeta] (when each record was last
+/// edited or deleted) so the data can be merged with other devices.
 class AppStore extends ChangeNotifier {
   AppStore(this._storage);
 
-  static const dataVersion = 1;
+  static const dataVersion = 2;
 
   final Storage _storage;
 
@@ -30,6 +38,18 @@ class AppStore extends ChangeNotifier {
   FocusState? _focus;
   AppSettings _settings = const AppSettings();
   Map<String, Subject> _subjectIndex = {};
+
+  SyncMeta _meta = SyncMeta();
+
+  /// The last saved state of every record, to find what a change touched.
+  final Map<String, Map<String, String>> _snapshot = {};
+  String _settingsSnapshot = '';
+  String _focusSnapshot = '';
+  int _lastStamp = 0;
+  final _localChanges = StreamController<void>.broadcast();
+
+  /// Fires after a change made on this device (not one merged from sync).
+  Stream<void> get localChanges => _localChanges.stream;
 
   UnmodifiableListView<Subject> get subjects => UnmodifiableListView(_subjects);
   UnmodifiableListView<ClassSession> get sessions =>
@@ -57,6 +77,23 @@ class AppStore extends ChangeNotifier {
       _projects.isEmpty &&
       _sessions.isEmpty;
 
+  /// Whether everything here is the sample semester, or was added on top of
+  /// it (like a grade for a sample subject): the student was only trying
+  /// the app out.
+  bool get onlyDemoData {
+    var any = false;
+    for (final items in _collectionsJson().values) {
+      for (final item in items) {
+        any = true;
+        final demo = item.values.any(
+          (v) => v is String && v.startsWith(demoIdPrefix),
+        );
+        if (!demo) return false;
+      }
+    }
+    return any;
+  }
+
   // ---------------------------------------------------------------------------
   // Persistence
 
@@ -69,17 +106,19 @@ class AppStore extends ChangeNotifier {
     }
     if (raw != null && raw.isNotEmpty) {
       try {
-        _applyJson(jsonDecode(raw) as Map<String, dynamic>);
+        final j = jsonDecode(raw) as Map<String, dynamic>;
+        _applyJson(j);
+        _meta = SyncMeta.fromJson(j['meta']);
       } catch (e) {
         debugPrint('Saved data is unreadable, starting fresh: $e');
       }
     }
     _reindex();
+    _takeSnapshot();
     notifyListeners();
   }
 
-  Map<String, dynamic> toJson() => {
-    'version': dataVersion,
+  Map<String, List<Map<String, dynamic>>> _collectionsJson() => {
     'subjects': _subjects.map((e) => e.toJson()).toList(),
     'sessions': _sessions.map((e) => e.toJson()).toList(),
     'studyItems': _studyItems.map((e) => e.toJson()).toList(),
@@ -89,9 +128,38 @@ class AppStore extends ChangeNotifier {
     'grades': _grades.map((e) => e.toJson()).toList(),
     'studySessions': _studySessions.map((e) => e.toJson()).toList(),
     'attendance': _attendance.map((e) => e.toJson()).toList(),
+  };
+
+  Map<String, dynamic> toJson() => {
+    'version': dataVersion,
+    ..._collectionsJson(),
     'focus': _focus?.toJson(),
     'settings': _settings.toJson(),
+    'meta': _meta.toJson(),
   };
+
+  /// The data shared between devices: everything except settings that only
+  /// make sense on this device.
+  Map<String, dynamic> syncDoc() => {
+    'v': 1,
+    ..._collectionsJson(),
+    'focus': _focus?.toJson(),
+    'settings': _settings.toSyncJson(),
+    'meta': _meta.toJson(),
+  };
+
+  /// Replaces the data with [doc], usually the result of merging with the
+  /// server. Unlike local edits, this does not count as a new change.
+  Future<void> applySyncDoc(Map<String, dynamic> doc) {
+    final local = _settings;
+    _applyJson(doc);
+    final s = doc['settings'];
+    _settings = s is Map
+        ? local.withSynced(Map<String, dynamic>.from(s))
+        : local;
+    _meta = SyncMeta.fromJson(doc['meta']);
+    return _changed(fromSync: true);
+  }
 
   String exportJson() => const JsonEncoder.withIndent(' ').convert(toJson());
 
@@ -107,7 +175,11 @@ class AppStore extends ChangeNotifier {
     if (decoded is! Map<String, dynamic> || !decoded.containsKey('subjects')) {
       throw const FormatException('النص ده مش نسخة احتياطية صحيحة');
     }
+    // A restored backup counts as editing everything that differs, so the
+    // meta of this device is kept and the differences get stamped.
+    final meta = _meta;
     _applyJson(decoded);
+    _meta = meta;
     await _changed();
   }
 
@@ -151,14 +223,78 @@ class AppStore extends ChangeNotifier {
     _subjectIndex = {for (final s in _subjects) s.id: s};
   }
 
-  Future<void> _changed() async {
+  Future<void> _changed({bool fromSync = false}) async {
     _reindex();
+    if (fromSync) {
+      _takeSnapshot();
+    } else if (_stampChanges()) {
+      _localChanges.add(null);
+    }
     notifyListeners();
     try {
       await _storage.write(jsonEncode(toJson()));
     } catch (e) {
       debugPrint('Could not save data: $e');
     }
+  }
+
+  int _nextStamp() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _lastStamp = now > _lastStamp ? now : _lastStamp + 1;
+    return _lastStamp;
+  }
+
+  void _takeSnapshot() {
+    for (final e in _collectionsJson().entries) {
+      _snapshot[e.key] = {
+        for (final item in e.value) readString(item['id']): jsonEncode(item),
+      };
+    }
+    _settingsSnapshot = jsonEncode(_settings.toSyncJson());
+    _focusSnapshot = jsonEncode(_focus?.toJson());
+  }
+
+  /// Compares with the last snapshot and stamps every record that was
+  /// added, edited or removed. Returns whether anything synced changed.
+  bool _stampChanges() {
+    var changed = false;
+    int? stamp;
+    int now() => stamp ??= _nextStamp();
+    for (final e in _collectionsJson().entries) {
+      final col = e.key;
+      final current = {
+        for (final item in e.value) readString(item['id']): jsonEncode(item),
+      };
+      final before = _snapshot[col] ?? const <String, String>{};
+      final stamps = _meta.stamps.putIfAbsent(col, () => {});
+      final tombs = _meta.tombs.putIfAbsent(col, () => {});
+      current.forEach((id, encoded) {
+        if (before[id] == encoded) return;
+        stamps[id] = now();
+        tombs.remove(id);
+        changed = true;
+      });
+      for (final id in before.keys) {
+        if (current.containsKey(id)) continue;
+        tombs[id] = now();
+        stamps.remove(id);
+        changed = true;
+      }
+      _snapshot[col] = current;
+    }
+    final settings = jsonEncode(_settings.toSyncJson());
+    if (settings != _settingsSnapshot) {
+      _settingsSnapshot = settings;
+      _meta.settingsAt = now();
+      changed = true;
+    }
+    final focus = jsonEncode(_focus?.toJson());
+    if (focus != _focusSnapshot) {
+      _focusSnapshot = focus;
+      _meta.focusAt = now();
+      changed = true;
+    }
+    return changed;
   }
 
   void _upsert<T>(List<T> list, T item, String Function(T) idOf) {
@@ -538,7 +674,9 @@ class AppStore extends ChangeNotifier {
 
   StudySession _logFocus(FocusState f, int minutes) {
     final session = StudySession(
-      id: newId(),
+      // Derived from the timer, so if two synced devices both finish the
+      // same session it is still logged once.
+      id: 'focus-${f.startedAt.millisecondsSinceEpoch}',
       subjectId: f.subjectId,
       studyItemId: f.studyItemId,
       startedAt: f.startedAt,
@@ -625,5 +763,11 @@ class AppStore extends ChangeNotifier {
     _attendance.clear();
     _focus = null;
     return _changed();
+  }
+
+  @override
+  void dispose() {
+    _localChanges.close();
+    super.dispose();
   }
 }

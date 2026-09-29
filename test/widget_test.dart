@@ -182,4 +182,31 @@ void main() {
     expect(grade.maxScore, 10);
     expect(find.text('80%'), findsWidgets);
   });
+  testWidgets('computers get a side rail and can open sync setup', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = AppStore(MemoryStorage());
+    await store.load();
+    await tester.pumpWidget(StudyPlannerApp(store: store));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    await tester.tap(find.text('جرّب ببيانات تجريبية'));
+    await tester.pumpAndSettle();
+    for (final tab in ['الجدول', 'المذاكرة', 'المهام', 'المواد']) {
+      await _tapTab(tester, tab);
+    }
+    expect(find.text('المواد والدرجات'), findsOneWidget);
+    await _tapTab(tester, 'الرئيسية');
+
+    await tester.tap(find.byTooltip('زامن مع الكمبيوتر'));
+    await tester.pumpAndSettle();
+    expect(find.text('المزامنة مش شغالة'), findsOneWidget);
+    expect(find.text('حفظ واتصال'), findsOneWidget);
+  });
 }

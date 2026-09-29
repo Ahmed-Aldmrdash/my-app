@@ -5,17 +5,23 @@ import 'package:provider/provider.dart';
 import 'data/app_store.dart';
 import 'models/models.dart';
 import 'screens/home_shell.dart';
+import 'sync/sync_service.dart';
 import 'theme/app_theme.dart';
 
 class StudyPlannerApp extends StatelessWidget {
-  const StudyPlannerApp({super.key, required this.store});
+  StudyPlannerApp({super.key, required this.store, SyncService? sync})
+    : sync = sync ?? SyncService(store);
 
   final AppStore store;
+  final SyncService sync;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: store,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: store),
+        ChangeNotifierProvider.value(value: sync),
+      ],
       child: Selector<AppStore, AppThemeMode>(
         selector: (_, s) => s.settings.themeMode,
         builder: (context, mode, _) => MaterialApp(

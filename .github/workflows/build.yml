@@ -1,0 +1,118 @@
+# Builds the computer versions of the app on every push:
+#   - the web app, published to GitHub Pages (enable it once under
+#     Settings → Pages → Source: GitHub Actions);
+#   - the Windows app, attached to the run as "StudyPlanner-Windows".
+#
+# Optional: add SUPABASE_URL and SUPABASE_KEY under Settings → Secrets and
+# variables → Actions to bake your sync project into these builds, so they
+# connect without pasting the project details.
+name: Build
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.5
+
+jobs:
+  test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  web:
+    name: Web app
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: >
+          flutter build web --release
+          --base-href "/${{ github.event.repository.name }}/"
+          --dart-define=SUPABASE_URL="$SUPABASE_URL"
+          --dart-define=SUPABASE_KEY="$SUPABASE_KEY"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  pages:
+    name: Publish to GitHub Pages
+    needs: web
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    # Fails harmlessly until Pages is switched on in the repo settings.
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  windows:
+    name: Windows app
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: >
+          flutter build windows --release
+          --dart-define=SUPABASE_URL="$env:SUPABASE_URL"
+          --dart-define=SUPABASE_KEY="$env:SUPABASE_KEY"
+      - name: Package
+        shell: pwsh
+        run: |
+          $app = "dist/StudyPlanner"
+          New-Item -ItemType Directory -Force $app | Out-Null
+          Copy-Item "build/windows/x64/runner/Release/*" $app -Recurse
+          # The Visual C++ runtime, for computers that don't have it yet.
+          foreach ($dll in "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll") {
+            Copy-Item "$env:WINDIR/System32/$dll" $app
+          }
+          Get-ChildItem $app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyPlanner-Windows
+          path: dist

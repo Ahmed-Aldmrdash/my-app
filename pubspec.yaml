@@ -1,7 +1,7 @@
 name: study_planner
 description: "منظم دراستي — تطبيق لتنظيم الحياة الجامعية: الجدول، المذاكرة، التاسكات، الكويزات، المشاريع والدرجات."
 publish_to: 'none'
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   sdk: ^3.10.0
@@ -16,6 +16,8 @@ dependencies:
   intl: ^0.20.3
   path_provider: ^2.1.6
   provider: ^6.1.5+1
+  shared_preferences: ^2.5.5
+  supabase_flutter: ^2.17.2
   timezone: ^0.11.1
 
 dev_dependencies:
@@ -46,3 +48,12 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   min_sdk_android: 21
   adaptive_icon_foreground_inset: 0
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#F5F4FB"
+    theme_color: "#6C5CE7"
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    icon_size: 256

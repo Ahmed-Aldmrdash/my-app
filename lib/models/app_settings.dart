@@ -90,6 +90,19 @@ class AppSettings {
     'breakMinutes': breakMinutes,
   };
 
+  /// Settings shared between devices. The theme and the permission prompt
+  /// stay per device.
+  Map<String, dynamic> toSyncJson() => toJson()
+    ..remove('themeMode')
+    ..remove('askedPermissions');
+
+  /// These settings with the shared ones replaced by [synced].
+  AppSettings withSynced(Map<String, dynamic> synced) => AppSettings.fromJson({
+    ...synced,
+    'themeMode': themeMode.name,
+    'askedPermissions': askedPermissions,
+  });
+
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
     studentName: readString(j['studentName']),
     notificationsEnabled: readBool(j['notificationsEnabled'], true),

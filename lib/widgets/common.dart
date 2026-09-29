@@ -10,14 +10,45 @@ import '../utils/formatters.dart';
 Color subjectColor(Subject? s, BuildContext context) =>
     s == null ? Theme.of(context).colorScheme.primary : Color(s.colorValue);
 
-Future<T?> pushPage<T>(BuildContext context, Widget page) =>
-    Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => page));
+/// Screens at least this wide get the desktop layout.
+const wideLayoutWidth = 840.0;
+
+/// Content never gets wider than this on big screens.
+const maxContentWidth = 880.0;
+
+Future<T?> pushPage<T>(BuildContext context, Widget page) => Navigator.of(
+  context,
+).push<T>(MaterialPageRoute(builder: (_) => ReadableWidth(child: page)));
+
+/// Centers [child] with a comfortable width on computer screens.
+class ReadableWidth extends StatelessWidget {
+  const ReadableWidth({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width <= maxContentWidth) return child;
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: maxContentWidth),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
 
 void showSnack(BuildContext context, String message, {VoidCallback? onUndo}) {
   final messenger = ScaffoldMessenger.of(context);
+  final wide = MediaQuery.sizeOf(context).width >= wideLayoutWidth;
   messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
     SnackBar(
+      // A phone-wide bar looks lost across a computer screen.
+      width: wide ? 520 : null,
       content: Text(message),
       action: onUndo == null
           ? null

@@ -7,6 +7,8 @@ import '../data/app_store.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/reminder_planner.dart';
+import '../sync/sync_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import 'dashboard_screen.dart';
@@ -69,6 +71,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // Daily summaries are computed ahead of time; refresh them whenever
       // the app comes back to the foreground.
       NotificationService.instance.scheduleSoon(context.read<AppStore>());
+      context.read<SyncService>().onResume();
     }
   }
 
@@ -113,48 +116,100 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (subTab != null) _tasksTab.value = subTab;
   }
 
+  static const _destinations = [
+    (Icons.home_outlined, Icons.home_rounded, 'الرئيسية'),
+    (Icons.calendar_month_outlined, Icons.calendar_month_rounded, 'الجدول'),
+    (Icons.auto_stories_outlined, Icons.auto_stories_rounded, 'المذاكرة'),
+    (Icons.checklist_rounded, Icons.fact_check_rounded, 'المهام'),
+    (Icons.school_outlined, Icons.school_rounded, 'المواد'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final pages = IndexedStack(
+      index: _index,
+      children: [
+        DashboardScreen(onNavigate: _navigate),
+        const ScheduleScreen(),
+        const StudyScreen(),
+        TasksHubScreen(requestedTab: _tasksTab),
+        const SubjectsScreen(),
+      ],
+    );
+    final width = MediaQuery.sizeOf(context).width;
+
+    // Computers and tablets: a side rail and a centred column.
+    if (width >= wideLayoutWidth) {
+      final theme = Theme.of(context);
+      return Scaffold(
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: _index,
+              onDestinationSelected: _navigate,
+              extended: width >= 1150,
+              minExtendedWidth: 210,
+              backgroundColor: theme.colorScheme.surfaceContainerLowest,
+              indicatorColor: theme.colorScheme.primary.withValues(alpha: 0.14),
+              labelType: width >= 1150
+                  ? NavigationRailLabelType.none
+                  : NavigationRailLabelType.all,
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const IconBadge(
+                      Icons.auto_stories_rounded,
+                      color: AppColors.primary,
+                      filled: true,
+                    ),
+                    if (width >= 1150) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        'منظم دراستي',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              destinations: [
+                for (final d in _destinations)
+                  NavigationRailDestination(
+                    icon: Icon(d.$1),
+                    selectedIcon: Icon(d.$2, color: theme.colorScheme.primary),
+                    label: Text(d.$3),
+                  ),
+              ],
+            ),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                  child: pages,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          DashboardScreen(onNavigate: _navigate),
-          const ScheduleScreen(),
-          const StudyScreen(),
-          TasksHubScreen(requestedTab: _tasksTab),
-          const SubjectsScreen(),
-        ],
-      ),
+      body: pages,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _navigate,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'الرئيسية',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month_rounded),
-            label: 'الجدول',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            selectedIcon: Icon(Icons.auto_stories_rounded),
-            label: 'المذاكرة',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_rounded),
-            selectedIcon: Icon(Icons.fact_check_rounded),
-            label: 'المهام',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.school_rounded),
-            label: 'المواد',
-          ),
+        destinations: [
+          for (final d in _destinations)
+            NavigationDestination(
+              icon: Icon(d.$1),
+              selectedIcon: Icon(d.$2),
+              label: d.$3,
+            ),
         ],
       ),
     );

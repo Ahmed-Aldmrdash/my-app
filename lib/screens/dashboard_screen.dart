@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../data/app_store.dart';
 import '../data/demo_data.dart';
 import '../models/models.dart';
+import '../sync/sync_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../utils/grade_calculator.dart';
@@ -21,6 +22,7 @@ import 'settings_screen.dart';
 import 'stats_screen.dart';
 import 'study_item_form.dart';
 import 'subject_form.dart';
+import 'sync_screen.dart';
 import 'task_form.dart';
 
 typedef Navigate = void Function(int tab, [int? subTab]);
@@ -106,11 +108,15 @@ class _Hero extends StatelessWidget {
         ? (gpa == null ? '—' : gpa.toStringAsFixed(2))
         : formatPercent(overall);
     const white = Colors.white;
+    // On computers the header floats as a card instead of hugging the top.
+    final wide = MediaQuery.sizeOf(context).width >= wideLayoutWidth;
 
-    return Container(
-      decoration: const BoxDecoration(
+    final hero = Container(
+      decoration: BoxDecoration(
         gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+        borderRadius: wide
+            ? BorderRadius.circular(28)
+            : const BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: SafeArea(
         bottom: false,
@@ -143,6 +149,8 @@ class _Hero extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const _SyncButton(),
+                  const SizedBox(width: 6),
                   IconButton(
                     tooltip: 'الإحصائيات',
                     style: IconButton.styleFrom(
@@ -276,6 +284,41 @@ class _Hero extends StatelessWidget {
           ),
         ),
       ),
+    );
+    if (!wide) return hero;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: hero,
+    );
+  }
+}
+
+/// Cloud icon showing whether this device is in sync with the others.
+class _SyncButton extends StatelessWidget {
+  const _SyncButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = context.watch<SyncService>();
+    final (icon, tip) = switch (sync.state) {
+      SyncState.idle => (Icons.cloud_done_rounded, 'متزامن'),
+      SyncState.syncing => (Icons.cloud_sync_rounded, 'بزامن…'),
+      SyncState.error => (Icons.cloud_off_rounded, 'مشكلة في المزامنة'),
+      SyncState.notConfigured => (
+        Icons.cloud_upload_outlined,
+        'زامن مع الكمبيوتر',
+      ),
+      _ => (Icons.cloud_queue_rounded, 'المزامنة'),
+    };
+    return IconButton(
+      tooltip: tip,
+      style: IconButton.styleFrom(
+        backgroundColor: sync.state == SyncState.error
+            ? AppColors.danger.withValues(alpha: 0.5)
+            : Colors.white.withValues(alpha: 0.16),
+      ),
+      icon: Icon(icon, color: Colors.white),
+      onPressed: () => pushPage(context, const SyncScreen()),
     );
   }
 }
