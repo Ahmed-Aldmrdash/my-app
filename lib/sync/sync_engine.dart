@@ -13,6 +13,10 @@ abstract class SyncRemote {
   /// The stored document, or null when nothing was stored yet.
   Future<RemoteDoc?> fetch();
 
+  /// Just the stored version (null when nothing was stored yet), to check
+  /// cheaply whether anything changed.
+  Future<int?> fetchVersion();
+
   /// Stores the first version. Returns its version number, or null if
   /// another device created it first.
   Future<int?> create(Map<String, dynamic> doc);
@@ -39,6 +43,19 @@ class SyncEngine {
   /// The server version after the last successful round.
   int? lastVersion;
 
+  /// The data as of [lastVersion] (see [syncDocKey]).
+  String? _lastKey;
+
+  /// Whether a round would change anything: this device has edits the
+  /// server hasn't got, or another device saved since the last round. Only
+  /// downloads the version number.
+  Future<bool> needsSync() async {
+    final key = _lastKey;
+    if (key == null || lastVersion == null) return true;
+    if (key != syncDocKey(store.syncDoc())) return true;
+    return await remote.fetchVersion() != lastVersion;
+  }
+
   Future<SyncOutcome> syncOnce() async {
     for (var attempt = 0; attempt < 5; attempt++) {
       final remoteDoc = await remote.fetch();
@@ -55,6 +72,7 @@ class SyncEngine {
       }
       if (remoteDoc != null && sameSyncDoc(merged, remoteDoc.doc)) {
         lastVersion = remoteDoc.version;
+        _lastKey = syncDocKey(merged);
         return pulled ? SyncOutcome.pulled : SyncOutcome.upToDate;
       }
       final version = remoteDoc == null
@@ -62,6 +80,7 @@ class SyncEngine {
           : await remote.replace(merged, remoteDoc.version);
       if (version != null) {
         lastVersion = version;
+        _lastKey = syncDocKey(merged);
         return pulled ? SyncOutcome.pulledAndPushed : SyncOutcome.pushed;
       }
       // Another device saved in between: merge with theirs and retry.

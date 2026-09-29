@@ -13,6 +13,7 @@ class FakeRemote implements SyncRemote {
   Map<String, dynamic>? doc;
   int version = 0;
   int writes = 0;
+  int versionChecks = 0;
 
   /// Runs once before the next write, to simulate another device racing.
   Future<void> Function()? beforeNextWrite;
@@ -28,6 +29,12 @@ class FakeRemote implements SyncRemote {
       ? null
       // Round-trip through JSON like the network does.
       : RemoteDoc(jsonDecode(jsonEncode(doc)) as Map<String, dynamic>, version);
+
+  @override
+  Future<int?> fetchVersion() async {
+    versionChecks++;
+    return doc == null ? null : version;
+  }
 
   @override
   Future<int?> create(Map<String, dynamic> d) async {
@@ -225,6 +232,31 @@ void main() {
   });
 
   group('two devices', () {
+    test('checking for news only downloads the version', () async {
+      final server = FakeRemote();
+      final phone = await device();
+      final pc = await device();
+      final phoneSync = SyncEngine(phone, server);
+      final pcSync = SyncEngine(pc, server);
+
+      expect(await phoneSync.needsSync(), isTrue, reason: 'never synced');
+      await phone.saveSubject(const Subject(id: 's1', name: 'برمجة'));
+      await phoneSync.syncOnce();
+      await pcSync.syncOnce();
+      expect(await phoneSync.needsSync(), isFalse);
+      expect(await pcSync.needsSync(), isFalse);
+
+      await pc.saveTask(const TaskItem(id: 't1', title: 'x'));
+      expect(await pcSync.needsSync(), isTrue, reason: 'unsaved local edit');
+      expect(await phoneSync.needsSync(), isFalse, reason: 'not saved yet');
+      await pcSync.syncOnce();
+      expect(await phoneSync.needsSync(), isTrue, reason: 'the pc saved');
+      await phoneSync.syncOnce();
+      expect(await phoneSync.needsSync(), isFalse);
+      expect(phone.tasks.single.title, 'x');
+      expect(server.versionChecks, greaterThan(0));
+    });
+
     test('changes flow both ways and converge', () async {
       final server = FakeRemote();
       final phone = await device();

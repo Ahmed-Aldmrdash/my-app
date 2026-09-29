@@ -1,10 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'sync_backend.dart';
 import 'sync_engine.dart';
 
 /// Keeps each account's data as one row of the `planner_state` table (see
 /// `supabase/setup.sql`), with a version number for safe concurrent saves.
-class SupabaseRemote implements SyncRemote {
+class SupabaseRemote implements LiveRemote {
   SupabaseRemote(this.client, this.userId);
 
   static const table = 'planner_state';
@@ -25,6 +26,17 @@ class SupabaseRemote implements SyncRemote {
       Map<String, dynamic>.from(row['data'] as Map),
       (row['version'] as num).toInt(),
     );
+  }
+
+  @override
+  Future<int?> fetchVersion() async {
+    final row = await client
+        .from(table)
+        .select('version')
+        .eq('user_id', userId)
+        .maybeSingle();
+    final version = row?['version'];
+    return version is num ? version.toInt() : null;
   }
 
   @override
@@ -59,8 +71,7 @@ class SupabaseRemote implements SyncRemote {
     return rows.isEmpty ? null : next;
   }
 
-  /// Calls [onChange] with the new version whenever the row changes,
-  /// including changes made by other devices.
+  @override
   void listen(void Function(int? version) onChange) {
     _channel = client
         .channel('planner_state:$userId')
@@ -81,6 +92,7 @@ class SupabaseRemote implements SyncRemote {
         .subscribe();
   }
 
+  @override
   Future<void> close() async {
     final c = _channel;
     _channel = null;

@@ -373,7 +373,13 @@ class _SyncScreenState extends State<SyncScreen> {
               ],
             ),
             const SizedBox(height: 14),
-            FilledButton.icon(
+            Text(
+              'الجهاز ده هيفضل داخل على حسابك، ومش محتاج تعمل حاجة تاني: '
+              'التعديلات بتتزامن لوحدها.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
               onPressed: sync.state == SyncState.syncing
                   ? null
                   : () => sync.syncNow(),
@@ -468,9 +474,8 @@ class _StatusCard extends StatelessWidget {
       SyncState.idle => (
         Icons.cloud_done_rounded,
         'متزامن ✓',
-        sync.lastSynced == null
-            ? 'أي تعديل هيوصل لأجهزتك التانية على طول'
-            : 'آخر مزامنة ${_ago(sync.lastSynced!)}',
+        'شغالة لوحدها: أي تعديل بيوصل لأجهزتك التانية على طول'
+            '${sync.lastSynced == null ? '' : ' • آخر مزامنة ${_ago(sync.lastSynced!)}'}',
       ),
       SyncState.error => (
         Icons.cloud_off_rounded,

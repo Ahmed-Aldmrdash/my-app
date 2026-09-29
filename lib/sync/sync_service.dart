@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthException, PostgrestException;
 
 import '../data/app_store.dart';
-import 'supabase_remote.dart';
+import 'supabase_backend.dart';
+import 'sync_backend.dart';
 import 'sync_config.dart';
 import 'sync_engine.dart';
 
@@ -27,13 +29,27 @@ enum SyncState {
   error,
 }
 
-/// Keeps this device's data in sync with the student's account: it syncs
-/// after every local change, whenever another device saves, when the app
-/// comes back to the foreground and every few minutes.
+/// Keeps this device's data in sync with the student's account. Once
+/// signed in, the device stays signed in (also after restarts) and syncs by
+/// itself: after every local change, as soon as another device saves, when
+/// the app comes back to the foreground, and with a quick check every
+/// minute in case a live update was missed.
 class SyncService extends ChangeNotifier {
-  SyncService(this.store);
+  SyncService(
+    this.store, {
+    SyncBackend? backend,
+    this.saveDelay = const Duration(milliseconds: 1200),
+    this.checkEvery = const Duration(minutes: 1),
+  }) : backend = backend ?? SupabaseBackend();
 
   final AppStore store;
+  final SyncBackend backend;
+
+  /// How long after a local edit to save it, so quick edits go together.
+  final Duration saveDelay;
+
+  /// How often to check for changes a live update might have missed.
+  final Duration checkEvery;
 
   /// The account this device last synced with.
   static const _linkedUserPref = 'sync.user';
@@ -42,26 +58,19 @@ class SyncService extends ChangeNotifier {
   SyncState _state = SyncState.notConfigured;
   String? _error;
   DateTime? _lastSynced;
-  String? _email;
-  String? _userId;
 
-  bool _supabaseReady = false;
-  StreamSubscription<AuthState>? _authSub;
-  StreamSubscription<void>? _localSub;
-  SupabaseRemote? _remote;
-  SyncEngine? _engine;
-  Timer? _debounce;
-  Timer? _periodic;
+  bool _open = false;
+  StreamSubscription<SyncUser?>? _userSub;
+  _AccountSync? _account;
   bool _running = false;
   bool _again = false;
-  bool _linked = false;
 
   SyncState get state => _state;
   SyncConfig? get config => _config;
   String? get error => _error;
   DateTime? get lastSynced => _lastSynced;
-  String? get email => _email;
-  bool get isSignedIn => _userId != null;
+  String? get email => _account?.user.email;
+  bool get isSignedIn => _account != null;
 
   /// Loads the saved project settings and reconnects.
   Future<void> init() async {
@@ -100,95 +109,78 @@ class SyncService extends ChangeNotifier {
     await _disconnect();
     _set(SyncState.connecting);
     try {
-      await Supabase.initialize(
-        url: config.url,
-        publishableKey: config.key,
-        debug: false,
-      );
-      _supabaseReady = true;
-      final auth = Supabase.instance.client.auth;
-      _authSub = auth.onAuthStateChange.listen(
-        (s) => _onUser(s.session?.user),
+      await backend.open(config);
+      _open = true;
+      _userSub = backend.userChanges.listen(
+        _onUser,
         onError: (Object e) => debugPrint('Auth error: $e'),
       );
-      _onUser(auth.currentUser);
+      _onUser(backend.currentUser);
     } catch (e) {
+      debugPrint('Could not connect: $e');
       _error = 'مش قادر أوصل لمشروع Supabase — راجع الرابط والمفتاح';
       _set(SyncState.error);
     }
   }
 
   Future<void> _disconnect() async {
-    await _stopSyncing();
-    await _authSub?.cancel();
-    _authSub = null;
-    if (_supabaseReady) {
-      _supabaseReady = false;
+    _stopSyncing();
+    await _userSub?.cancel();
+    _userSub = null;
+    if (_open) {
+      _open = false;
       try {
-        await Supabase.instance.dispose();
+        await backend.close();
       } catch (e) {
-        debugPrint('Could not close Supabase: $e');
+        debugPrint('Could not close the connection: $e');
       }
     }
   }
 
-  void _onUser(User? user) {
+  void _onUser(SyncUser? user) {
     if (user == null) {
       _stopSyncing();
-      _email = null;
       _set(SyncState.signedOut);
       return;
     }
-    if (_userId == user.id && _engine != null) return;
+    // Session refreshes report the same account again.
+    if (_account?.user.id == user.id) return;
     _startSyncing(user);
   }
 
-  void _startSyncing(User user) {
+  void _startSyncing(SyncUser user) {
     _stopSyncing();
-    _userId = user.id;
-    _email = user.email;
-    _linked = false;
-    final remote = SupabaseRemote(Supabase.instance.client, user.id);
-    final engine = SyncEngine(store, remote);
-    _remote = remote;
-    _engine = engine;
+    final remote = backend.remoteFor(user);
+    final account = _AccountSync(user, remote, SyncEngine(store, remote));
+    _account = account;
     remote.listen((version) {
-      // Our own save comes back too; only react to other devices.
-      if (version == null || version != engine.lastVersion) syncNow();
+      // This device's own saves come back too; only react to others'.
+      if (version == null || version != account.engine.lastVersion) {
+        syncNow();
+      }
     });
-    _localSub = store.localChanges.listen((_) => _scheduleSync());
-    _periodic = Timer.periodic(const Duration(minutes: 3), (_) => syncNow());
+    account.localChanges = store.localChanges.listen((_) {
+      account.saveTimer?.cancel();
+      account.saveTimer = Timer(saveDelay, syncNow);
+    });
+    account.checkTimer = Timer.periodic(checkEvery, (_) => _check());
     _error = null;
     _set(SyncState.idle);
     syncNow();
   }
 
-  Future<void> _stopSyncing() async {
-    _debounce?.cancel();
-    _periodic?.cancel();
-    await _localSub?.cancel();
-    _localSub = null;
-    final remote = _remote;
-    _remote = null;
-    _engine = null;
-    _userId = null;
-    if (remote != null) {
-      try {
-        await remote.close();
-      } catch (_) {}
-    }
-  }
-
-  void _scheduleSync() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 1200), syncNow);
+  /// Stops syncing the current account at once; its connection closes in
+  /// the background.
+  void _stopSyncing() {
+    final account = _account;
+    _account = null;
+    account?.close();
   }
 
   /// Runs a sync round now (or right after the one in progress).
   Future<void> syncNow() async {
-    final engine = _engine;
-    final userId = _userId;
-    if (engine == null || userId == null) return;
+    final account = _account;
+    if (account == null) return;
     if (_running) {
       _again = true;
       return;
@@ -196,48 +188,74 @@ class SyncService extends ChangeNotifier {
     _running = true;
     _set(SyncState.syncing);
     try {
-      if (!_linked) await _link(userId);
+      if (!account.linked) await _link(account);
       do {
         _again = false;
-        await engine.syncOnce();
-      } while (_again && identical(engine, _engine));
-      _lastSynced = DateTime.now();
-      _error = null;
-      if (identical(engine, _engine)) _set(SyncState.idle);
+        await account.engine.syncOnce();
+      } while (_again && identical(account, _account));
+      if (identical(account, _account)) {
+        _lastSynced = DateTime.now();
+        _error = null;
+        _set(SyncState.idle);
+      }
     } catch (e) {
       debugPrint('Sync failed: $e');
-      _error = describeSyncError(e);
-      if (identical(engine, _engine)) _set(SyncState.error);
+      if (identical(account, _account)) {
+        _error = describeSyncError(e);
+        _set(SyncState.error);
+      }
     } finally {
       _running = false;
+      // Another account signed in during this round: sync that one too.
+      if (_account != null && !identical(account, _account)) syncNow();
+    }
+  }
+
+  /// A cheap look at whether anything changed; only syncs if so.
+  Future<void> _check() async {
+    final account = _account;
+    if (account == null || _running) return;
+    // After a failure, a full round is what clears the error.
+    if (_state == SyncState.error) {
+      await syncNow();
+      return;
+    }
+    try {
+      if (await account.engine.needsSync()) {
+        await syncNow();
+      } else if (identical(account, _account)) {
+        // Confirmed up to date just now.
+        _lastSynced = DateTime.now();
+        notifyListeners();
+      }
+    } catch (e) {
+      // Offline, most likely; the next check tries again.
+      debugPrint('Sync check failed: $e');
     }
   }
 
   /// Before this device first syncs with an account: drops the sample
   /// semester, so trying the app out never mixes fake subjects into the
   /// student's real data on their other devices.
-  Future<void> _link(String userId) async {
+  Future<void> _link(_AccountSync account) async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getString(_linkedUserPref) != userId && store.onlyDemoData) {
+    if (prefs.getString(_linkedUserPref) != account.user.id &&
+        store.onlyDemoData) {
       await store.clearAll();
     }
-    await prefs.setString(_linkedUserPref, userId);
-    _linked = true;
+    await prefs.setString(_linkedUserPref, account.user.id);
+    account.linked = true;
   }
 
   /// Called when the app returns to the foreground.
-  void onResume() {
-    if (_engine != null) syncNow();
-  }
+  void onResume() => _check();
 
   /// Signs in. Returns an error message, or null on success.
   Future<String?> signIn(String email, String password) async {
-    if (!_supabaseReady) return 'جهّز السيرفر الأول';
+    if (!_open) return 'جهّز السيرفر الأول';
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
-        email: email.trim(),
-        password: password,
-      );
+      await backend.signIn(email.trim(), password);
+      _onUser(backend.currentUser);
       return null;
     } catch (e) {
       return describeAuthError(e);
@@ -247,27 +265,27 @@ class SyncService extends ChangeNotifier {
   /// Creates an account. Returns null when signed in right away, or a
   /// message (e.g. "check your email") otherwise.
   Future<String?> signUp(String email, String password) async {
-    if (!_supabaseReady) return 'جهّز السيرفر الأول';
+    if (!_open) return 'جهّز السيرفر الأول';
     try {
-      final res = await Supabase.instance.client.auth.signUp(
-        email: email.trim(),
-        password: password,
-      );
-      if (res.session != null) return null;
-      final identities = res.user?.identities;
-      if (identities != null && identities.isEmpty) {
-        return 'الإيميل ده عليه حساب قبل كده — ادخل بيه';
+      final result = await backend.signUp(email.trim(), password);
+      switch (result) {
+        case SignUpResult.signedIn:
+          _onUser(backend.currentUser);
+          return null;
+        case SignUpResult.alreadyRegistered:
+          return 'الإيميل ده عليه حساب قبل كده — ادخل بيه';
+        case SignUpResult.confirmEmail:
+          return 'بعتنالك إيميل تأكيد 📩 افتحه ودوس على اللينك، وبعدين ادخل من هنا';
       }
-      return 'بعتنالك إيميل تأكيد 📩 افتحه ودوس على اللينك، وبعدين ادخل من هنا';
     } catch (e) {
       return describeAuthError(e);
     }
   }
 
   Future<void> signOut() async {
-    if (!_supabaseReady) return;
+    if (!_open) return;
     try {
-      await Supabase.instance.client.auth.signOut();
+      await backend.signOut();
     } catch (e) {
       debugPrint('Sign out failed: $e');
     }
@@ -283,6 +301,32 @@ class SyncService extends ChangeNotifier {
   void dispose() {
     _disconnect();
     super.dispose();
+  }
+}
+
+/// Everything that runs while one account is signed in on this device.
+class _AccountSync {
+  _AccountSync(this.user, this.remote, this.engine);
+
+  final SyncUser user;
+  final LiveRemote remote;
+  final SyncEngine engine;
+  StreamSubscription<void>? localChanges;
+  Timer? saveTimer;
+  Timer? checkTimer;
+
+  /// Whether [SyncService._link] ran for this sign-in.
+  bool linked = false;
+
+  void close() {
+    saveTimer?.cancel();
+    checkTimer?.cancel();
+    unawaited(localChanges?.cancel());
+    unawaited(
+      remote.close().catchError(
+        (Object e) => debugPrint('Could not close live updates: $e'),
+      ),
+    );
   }
 }
 

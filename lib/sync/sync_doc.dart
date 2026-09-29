@@ -169,7 +169,11 @@ Map<String, dynamic> mergeSyncDocs(
 
 /// Whether two sync documents hold the same data, ignoring list order.
 bool sameSyncDoc(Map<String, dynamic> a, Map<String, dynamic> b) =>
-    canonicalJson(_normalized(a)) == canonicalJson(_normalized(b));
+    syncDocKey(a) == syncDocKey(b);
+
+/// A string that is equal for two documents exactly when they hold the
+/// same data.
+String syncDocKey(Map<String, dynamic> doc) => canonicalJson(_normalized(doc));
 
 Map<String, dynamic> _normalized(Map<String, dynamic> doc) {
   final meta = SyncMeta.fromJson(doc['meta']);

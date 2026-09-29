@@ -1,7 +1,7 @@
 name: study_planner
 description: "منظم دراستي — تطبيق لتنظيم الحياة الجامعية: الجدول، المذاكرة، التاسكات، الكويزات، المشاريع والدرجات."
 publish_to: 'none'
-version: 0.3.0+3
+version: 0.3.1+4
 
 environment:
   sdk: ^3.10.0
