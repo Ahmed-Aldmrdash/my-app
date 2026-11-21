@@ -15,6 +15,7 @@ import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
 import '../widgets/quick_add.dart';
+import 'app_tabs.dart';
 import 'focus_screen.dart';
 import 'grade_form.dart';
 import 'project_detail_screen.dart';
@@ -268,7 +269,7 @@ class _Hero extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: _GlassTile(
-                        onTap: () => onNavigate(4),
+                        onTap: () => onNavigate(AppTabs.subjects),
                         child: _GlassValue(
                           value: level,
                           label: system == GradingSystem.gpa
@@ -515,7 +516,7 @@ class _QuickActions extends StatelessWidget {
         () => pushPage(context, const GradeForm()),
       ),
       (
-        'المزيد',
+        'إضافة',
         Icons.apps_rounded,
         AppColors.orange,
         () => showQuickAddSheet(context),

@@ -386,4 +386,261 @@ void main() {
       expect(pc.focus, isNull);
     });
   });
+
+  group('data from newer app versions', () {
+    /// What a newer app version might have saved: a field this version
+    /// doesn't know, a whole list it doesn't know, and a new setting.
+    Map<String, dynamic> newerSave() => {
+      'version': 9,
+      'subjects': [
+        {'id': 's1', 'name': 'برمجة', 'semesterId': 'term-1'},
+      ],
+      'flashcards': [
+        {'id': 'c1', 'front': 'Q', 'back': 'A'},
+      ],
+      'settings': {'studentName': 'أحمد', 'prayerCity': 'Cairo'},
+      'meta': {
+        'stamps': {
+          'subjects': {'s1': 5},
+          'flashcards': {'c1': 5},
+        },
+        // The newer app's student set the new setting.
+        'settingsAt': 5,
+      },
+    };
+
+    test('the store lists what it syncs', () async {
+      expect((await device()).collectionNames, syncedCollections);
+    });
+
+    test('unknown fields, lists and settings survive edits', () async {
+      final storage = MemoryStorage(jsonEncode(newerSave()));
+      final s = AppStore(storage);
+      await s.load();
+      await s.saveSubject(const Subject(id: 's1', name: 'برمجة 2'));
+      await s.updateSettings(s.settings.copyWith(dailyGoalMinutes: 90));
+
+      final saved = jsonDecode(storage.data!) as Map<String, dynamic>;
+      final subject = (saved['subjects'] as List).single as Map;
+      expect(subject['name'], 'برمجة 2');
+      expect(subject['semesterId'], 'term-1');
+      expect((saved['flashcards'] as List).single['front'], 'Q');
+      expect(saved['settings']['prayerCity'], 'Cairo');
+      expect(saved['settings']['dailyGoalMinutes'], 90);
+
+      final doc = s.syncDoc();
+      expect(doc['v'], syncFormat);
+      expect(doc['flashcards'], hasLength(1));
+      expect(doc['settings']['prayerCity'], 'Cairo');
+      expect((doc['subjects'] as List).single['semesterId'], 'term-1');
+    });
+
+    test('deleting all data also deletes unknown lists', () async {
+      final s = AppStore(MemoryStorage(jsonEncode(newerSave())));
+      await s.load();
+      await s.clearAll();
+      expect(s.syncDoc()['flashcards'], isEmpty);
+      expect(
+        SyncMeta.fromJson(s.syncDoc()['meta']).tombs['flashcards'],
+        contains('c1'),
+      );
+    });
+
+    test('merging keeps lists only one side knows', () {
+      final newer = newerSave();
+      final older = {
+        'v': 1,
+        'subjects': <Object?>[],
+        'meta': {'stamps': <String, Object?>{}},
+      };
+      final ab = mergeSyncDocs(newer, older);
+      final ba = mergeSyncDocs(older, newer);
+      expect(sameSyncDoc(ab, ba), isTrue);
+      expect((ab['flashcards'] as List).single['id'], 'c1');
+      expect(SyncMeta.fromJson(ab['meta']).stamps['flashcards'], {'c1': 5});
+    });
+
+    test('a copy that lost new fields loses a tie', () {
+      Map<String, dynamic> doc(Map<String, dynamic> task) => {
+        'tasks': [task],
+        'meta': {
+          'stamps': {
+            'tasks': {'1': 7},
+          },
+        },
+      };
+      final full = doc({'id': '1', 'title': 'x', 'colour': 'red'});
+      final stripped = doc({'id': '1', 'title': 'x'});
+      for (final m in [
+        mergeSyncDocs(full, stripped),
+        mergeSyncDocs(stripped, full),
+      ]) {
+        expect((m['tasks'] as List).single['colour'], 'red');
+      }
+    });
+
+    test('each app writes its own format; the oldest allowed only goes up', () {
+      final m = mergeSyncDocs({'v': 7, 'minFormat': 3}, {'v': 1});
+      expect(m['v'], syncFormat);
+      expect(m['minFormat'], 3);
+      expect(mergeSyncDocs({}, {})['minFormat'], minWriterFormat);
+    });
+
+    test('syncing still works after deleting all data', () async {
+      final server = FakeRemote();
+      final s = AppStore(MemoryStorage(jsonEncode(newerSave())));
+      await s.load();
+      await SyncEngine(s, server).syncOnce();
+      await s.clearAll();
+      final engine = SyncEngine(s, server);
+      expect(await engine.syncOnce(), SyncOutcome.pushed);
+      expect(await engine.needsSync(), isFalse);
+      expect(server.doc!['flashcards'], isEmpty);
+      expect(
+        SyncMeta.fromJson(server.doc!['meta']).tombs['flashcards'],
+        contains('c1'),
+      );
+
+      // Restoring a backup without that list doesn't break syncing either.
+      final restored = await device();
+      await restored.importJson(jsonEncode({'subjects': <Object?>[]}));
+      await SyncEngine(restored, server).syncOnce();
+      expect(await SyncEngine(restored, server).needsSync(), isTrue);
+    });
+
+    test(
+      'values this version cannot show are written back untouched',
+      () async {
+        final server = FakeRemote();
+        server.doc = {
+          'v': 3,
+          'studyItems': [
+            {
+              'id': 'l1',
+              'subjectId': 's',
+              'title': 'L1',
+              'status': 'mastered',
+              'releaseDate': '2026-10-01T00:00:00.000',
+            },
+          ],
+          'projects': [
+            {
+              'id': 'p1',
+              'title': 'P',
+              'steps': [
+                {
+                  'id': 'st',
+                  'title': 'x',
+                  'done': false,
+                  'dueDate': '2026-12-01',
+                },
+              ],
+            },
+          ],
+          'focus': {
+            'phase': 'focus',
+            'plannedSeconds': 60,
+            'startedAt': '2026-10-01T10:00:00.000',
+            'endsAt': '2026-10-01T10:01:00.000',
+            'sound': 'rain',
+          },
+          'settings': {'focusMinutes': 240, 'prayerCity': 'Cairo'},
+          'meta': {
+            'stamps': {
+              'studyItems': {'l1': 100},
+              'projects': {'p1': 100},
+            },
+            'settingsAt': 100,
+            'focusAt': 100,
+          },
+        };
+        server.version = 1;
+        final phone = await device();
+        final engine = SyncEngine(phone, server);
+        await engine.syncOnce();
+        // Nothing to do afterwards: no endless re-applying.
+        expect(await engine.needsSync(), isFalse);
+        // An unrelated edit pushes everything else back unchanged.
+        await phone.saveTask(const TaskItem(id: 't', title: 't'));
+        await engine.syncOnce();
+        final doc = server.doc!;
+        expect((doc['studyItems'] as List).single['status'], 'mastered');
+        final step = (doc['projects'] as List).single['steps'].single as Map;
+        expect(step['dueDate'], '2026-12-01');
+        expect(doc['focus']['sound'], 'rain');
+        expect(doc['settings']['focusMinutes'], 240);
+        expect(doc['settings']['prayerCity'], 'Cairo');
+        expect(await engine.needsSync(), isFalse);
+
+        // Editing the record here writes what this version knows, and keeps
+        // the fields it doesn't.
+        await phone.setStudyStatus('l1', StudyStatus.studied);
+        await engine.syncOnce();
+        final item = (server.doc!['studyItems'] as List).single as Map;
+        expect(item['status'], 'studied');
+      },
+    );
+
+    test('undoing a deletion keeps fields from newer versions', () async {
+      final s = AppStore(
+        MemoryStorage(
+          jsonEncode({
+            'tasks': [
+              {'id': 't1', 'title': 'x', 'colour': 'red'},
+            ],
+          }),
+        ),
+      );
+      await s.load();
+      final task = s.tasks.single;
+      await s.deleteTask('t1');
+      // Another device's change arrives in between.
+      await s.applySyncDoc(s.syncDoc());
+      await s.saveTask(task);
+      expect((s.syncDoc()['tasks'] as List).single['colour'], 'red');
+    });
+
+    test(
+      'restoring a backup with other unknown settings stamps them',
+      () async {
+        final s = await device();
+        final before = SyncMeta.fromJson(s.syncDoc()['meta']).settingsAt;
+        await s.importJson(
+          jsonEncode({
+            'subjects': <Object?>[],
+            'settings': {'prayerCity': 'Alex'},
+          }),
+        );
+        expect(
+          SyncMeta.fromJson(s.syncDoc()['meta']).settingsAt,
+          greaterThan(before),
+        );
+        expect(s.syncDoc()['settings']['prayerCity'], 'Alex');
+      },
+    );
+
+    test('syncing never removes what a newer device saved', () async {
+      final server = FakeRemote();
+      final phone = await device();
+      await phone.saveTask(const TaskItem(id: 't1', title: 'old'));
+      await SyncEngine(phone, server).syncOnce();
+
+      // A newer app version on another device adds its own data.
+      final newer = AppStore(MemoryStorage(jsonEncode(newerSave())));
+      await newer.load();
+      await SyncEngine(newer, server).syncOnce();
+
+      // This device syncs, edits and syncs again.
+      await SyncEngine(phone, server).syncOnce();
+      await phone.saveTask(const TaskItem(id: 't1', title: 'new'));
+      await SyncEngine(phone, server).syncOnce();
+
+      final doc = server.doc!;
+      expect((doc['flashcards'] as List).single['id'], 'c1');
+      expect((doc['subjects'] as List).single['semesterId'], 'term-1');
+      expect(doc['settings']['prayerCity'], 'Cairo');
+      expect((doc['tasks'] as List).single['title'], 'new');
+      expect(doc['v'], syncFormat);
+    });
+  });
 }

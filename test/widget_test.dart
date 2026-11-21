@@ -48,8 +48,36 @@ Future<void> _tapTab(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// On phones the subjects open from the "more" tab.
+Future<void> _openSubjects(WidgetTester tester) async {
+  await _tapTab(tester, 'المزيد');
+  await tester.tap(find.text('المواد والدرجات'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(() => initializeDateFormatting('ar'));
+
+  testWidgets('the more tab holds the subjects and the app settings', (
+    tester,
+  ) async {
+    await _pumpApp(tester, demo: true);
+    final bar = find.byType(NavigationBar);
+    expect(
+      find.descendant(of: bar, matching: find.text('المواد')),
+      findsNothing,
+    );
+
+    await _openSubjects(tester);
+    expect(find.text('مستواك لحد دلوقتي'), findsOneWidget);
+    // The bar keeps "more" highlighted while the subjects are open.
+    expect(tester.widget<NavigationBar>(bar).selectedIndex, 4);
+
+    await _tapTab(tester, 'المزيد');
+    await tester.tap(find.text('الإعدادات'));
+    await tester.pumpAndSettle();
+    expect(find.text('اسمك (عشان أناديك بيه)'), findsOneWidget);
+  });
 
   testWidgets('first launch shows onboarding and loads demo data', (
     tester,
@@ -105,7 +133,7 @@ void main() {
     await _tapTab(tester, 'مشاريع');
     expect(find.text('مشروع إدارة مكتبة'), findsOneWidget);
 
-    await _tapTab(tester, 'المواد');
+    await _openSubjects(tester);
     expect(find.text('مستواك لحد دلوقتي'), findsOneWidget);
     await tester.tap(find.text('برمجة 2'));
     await tester.pumpAndSettle();
@@ -152,14 +180,14 @@ void main() {
     await store.updateSettings(
       store.settings.copyWith(gradingSystem: GradingSystem.gpa),
     );
-    await _tapTab(tester, 'المواد');
+    await _openSubjects(tester);
     expect(find.text('المعدل التراكمي المتوقع'), findsOneWidget);
   });
 
   testWidgets('adding a subject and a grade', (tester) async {
     final store = await _pumpApp(tester);
 
-    await _tapTab(tester, 'المواد');
+    await _openSubjects(tester);
     await tester.tap(find.text('مادة جديدة'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, 'فيزياء');

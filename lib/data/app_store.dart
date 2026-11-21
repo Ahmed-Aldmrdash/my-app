@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -26,15 +27,102 @@ class AppStore extends ChangeNotifier {
 
   final Storage _storage;
 
-  final List<Subject> _subjects = [];
-  final List<ClassSession> _sessions = [];
-  final List<StudyItem> _studyItems = [];
-  final List<TaskItem> _tasks = [];
-  final List<Assessment> _assessments = [];
-  final List<Project> _projects = [];
-  final List<GradeEntry> _grades = [];
-  final List<StudySession> _studySessions = [];
-  final List<AttendanceRecord> _attendance = [];
+  final _subjectRecords = _Records<Subject>(
+    'subjects',
+    Subject.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _sessionRecords = _Records<ClassSession>(
+    'sessions',
+    ClassSession.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _studyItemRecords = _Records<StudyItem>(
+    'studyItems',
+    StudyItem.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _taskRecords = _Records<TaskItem>(
+    'tasks',
+    TaskItem.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _assessmentRecords = _Records<Assessment>(
+    'assessments',
+    Assessment.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _projectRecords = _Records<Project>(
+    'projects',
+    Project.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _gradeRecords = _Records<GradeEntry>(
+    'grades',
+    GradeEntry.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _studySessionRecords = _Records<StudySession>(
+    'studySessions',
+    StudySession.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _attendanceRecords = _Records<AttendanceRecord>(
+    'attendance',
+    AttendanceRecord.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+
+  /// Every synced list this app version knows, in [syncedCollections]
+  /// order.
+  late final List<_Records<Object?>> _records = [
+    _subjectRecords,
+    _sessionRecords,
+    _studyItemRecords,
+    _taskRecords,
+    _assessmentRecords,
+    _projectRecords,
+    _gradeRecords,
+    _studySessionRecords,
+    _attendanceRecords,
+  ];
+
+  List<Subject> get _subjects => _subjectRecords.items;
+  List<ClassSession> get _sessions => _sessionRecords.items;
+  List<StudyItem> get _studyItems => _studyItemRecords.items;
+  List<TaskItem> get _tasks => _taskRecords.items;
+  List<Assessment> get _assessments => _assessmentRecords.items;
+  List<Project> get _projects => _projectRecords.items;
+  List<GradeEntry> get _grades => _gradeRecords.items;
+  List<StudySession> get _studySessions => _studySessionRecords.items;
+  List<AttendanceRecord> get _attendance => _attendanceRecords.items;
+
+  /// Lists added by newer app versions, kept as they are so that syncing
+  /// from this device never deletes them.
+  final Map<String, List<Object?>> _otherCollections = {};
+
+  /// The shared settings as last loaded or synced (without this device's own
+  /// keys), and what this version made of them. Until the settings are
+  /// edited here they are saved back exactly as loaded, so values only a
+  /// newer app version understands survive.
+  Map<String, dynamic> _settingsRaw = {};
+  String _settingsBaseline = '';
+
+  /// The focus timer as last loaded or synced, kept for the same reason.
+  Object? _focusRaw;
+  FocusState? _focusLoaded;
+
+  /// The oldest app format still allowed to save (see [minWriterFormat]).
+  int _minFormat = minWriterFormat;
   FocusState? _focus;
   AppSettings _settings = const AppSettings();
   Map<String, Subject> _subjectIndex = {};
@@ -118,35 +206,68 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The names of the synced lists this app version knows.
+  @visibleForTesting
+  List<String> get collectionNames => [for (final r in _records) r.name];
+
   Map<String, List<Map<String, dynamic>>> _collectionsJson() => {
-    'subjects': _subjects.map((e) => e.toJson()).toList(),
-    'sessions': _sessions.map((e) => e.toJson()).toList(),
-    'studyItems': _studyItems.map((e) => e.toJson()).toList(),
-    'tasks': _tasks.map((e) => e.toJson()).toList(),
-    'assessments': _assessments.map((e) => e.toJson()).toList(),
-    'projects': _projects.map((e) => e.toJson()).toList(),
-    'grades': _grades.map((e) => e.toJson()).toList(),
-    'studySessions': _studySessions.map((e) => e.toJson()).toList(),
-    'attendance': _attendance.map((e) => e.toJson()).toList(),
+    for (final r in _records) r.name: r.toJson(),
+    for (final e in _otherCollections.entries)
+      e.key: [
+        for (final item in e.value)
+          if (item is Map) Map<String, dynamic>.from(item),
+      ],
   };
 
-  Map<String, dynamic> toJson() => {
-    'version': dataVersion,
-    ..._collectionsJson(),
-    'focus': _focus?.toJson(),
-    'settings': _settings.toJson(),
-    'meta': _meta.toJson(),
-  };
+  Map<String, dynamic> toJson() {
+    final own = _settings.toJson();
+    return {
+      'version': dataVersion,
+      'minFormat': _minFormat,
+      ..._collectionsJson(),
+      'focus': _focusJson(),
+      'settings': {
+        ..._syncedSettingsJson(),
+        for (final k in AppSettings.localOnlyKeys) k: own[k],
+      },
+      'meta': _meta.toJson(),
+    };
+  }
 
   /// The data shared between devices: everything except settings that only
   /// make sense on this device.
   Map<String, dynamic> syncDoc() => {
-    'v': 1,
+    'v': syncFormat,
+    'minFormat': _minFormat,
     ..._collectionsJson(),
-    'focus': _focus?.toJson(),
-    'settings': _settings.toSyncJson(),
+    'focus': _focusJson(),
+    'settings': _syncedSettingsJson(),
     'meta': _meta.toJson(),
   };
+
+  /// The shared settings: as loaded while not edited here, otherwise the
+  /// edited ones on top of what was loaded.
+  Map<String, dynamic> _syncedSettingsJson() {
+    final own = _settings.toSyncJson();
+    if (jsonEncode(own) != _settingsBaseline) return {..._settingsRaw, ...own};
+    return _settingsRaw.isEmpty ? own : {..._settingsRaw};
+  }
+
+  /// The focus timer: as loaded while untouched here.
+  Object? _focusJson() => identical(_focus, _focusLoaded) && _focusRaw is Map
+      ? Map<String, dynamic>.from(_focusRaw! as Map)
+      : _focus?.toJson();
+
+  /// Remembers the settings just loaded from [raw] (see [_settingsRaw]).
+  void _rememberSettings(Object? raw) {
+    _settingsRaw = {
+      if (raw is Map)
+        for (final e in raw.entries)
+          if (e.key is String && !AppSettings.localOnlyKeys.contains(e.key))
+            e.key as String: e.value,
+    };
+    _settingsBaseline = jsonEncode(_settings.toSyncJson());
+  }
 
   /// Replaces the data with [doc], usually the result of merging with the
   /// server. Unlike local edits, this does not count as a new change.
@@ -157,6 +278,7 @@ class AppStore extends ChangeNotifier {
     _settings = s is Map
         ? local.withSynced(Map<String, dynamic>.from(s))
         : local;
+    _rememberSettings(s);
     _meta = SyncMeta.fromJson(doc['meta']);
     return _changed(fromSync: true);
   }
@@ -184,40 +306,39 @@ class AppStore extends ChangeNotifier {
   }
 
   void _applyJson(Map<String, dynamic> j) {
-    _subjects
+    for (final r in _records) {
+      r.load(j[r.name]);
+    }
+    final known = {for (final r in _records) r.name};
+    _otherCollections
       ..clear()
-      ..addAll(readList(j['subjects'], Subject.fromJson));
-    _sessions
-      ..clear()
-      ..addAll(readList(j['sessions'], ClassSession.fromJson));
-    _studyItems
-      ..clear()
-      ..addAll(readList(j['studyItems'], StudyItem.fromJson));
-    _tasks
-      ..clear()
-      ..addAll(readList(j['tasks'], TaskItem.fromJson));
-    _assessments
-      ..clear()
-      ..addAll(readList(j['assessments'], Assessment.fromJson));
-    _projects
-      ..clear()
-      ..addAll(readList(j['projects'], Project.fromJson));
-    _grades
-      ..clear()
-      ..addAll(readList(j['grades'], GradeEntry.fromJson));
-    _studySessions
-      ..clear()
-      ..addAll(readList(j['studySessions'], StudySession.fromJson));
-    _attendance
-      ..clear()
-      ..addAll(readList(j['attendance'], AttendanceRecord.fromJson));
-    _focus = FocusState.fromJson(j['focus']);
+      ..addAll({
+        for (final e in j.entries)
+          if (e.value is List &&
+              !known.contains(e.key) &&
+              !_notCollections.contains(e.key))
+            e.key: List<Object?>.of(e.value as List),
+      });
+    _focusRaw = j['focus'];
+    _focus = _focusLoaded = FocusState.fromJson(_focusRaw);
     final s = j['settings'];
     _settings = s is Map
         ? AppSettings.fromJson(Map<String, dynamic>.from(s))
         : const AppSettings();
+    _rememberSettings(s);
+    _minFormat = math.max(minWriterFormat, readInt(j['minFormat'], 1));
     _reindex();
   }
+
+  /// Keys of the saved document that are not lists of records.
+  static const _notCollections = {
+    'version',
+    'v',
+    'minFormat',
+    'focus',
+    'settings',
+    'meta',
+  };
 
   void _reindex() {
     _subjectIndex = {for (final s in _subjects) s.id: s};
@@ -250,8 +371,8 @@ class AppStore extends ChangeNotifier {
         for (final item in e.value) readString(item['id']): jsonEncode(item),
       };
     }
-    _settingsSnapshot = jsonEncode(_settings.toSyncJson());
-    _focusSnapshot = jsonEncode(_focus?.toJson());
+    _settingsSnapshot = jsonEncode(_syncedSettingsJson());
+    _focusSnapshot = jsonEncode(_focusJson());
   }
 
   /// Compares with the last snapshot and stamps every record that was
@@ -260,10 +381,13 @@ class AppStore extends ChangeNotifier {
     var changed = false;
     int? stamp;
     int now() => stamp ??= _nextStamp();
-    for (final e in _collectionsJson().entries) {
-      final col = e.key;
+    final collections = _collectionsJson();
+    // Lists that disappeared entirely (unknown ones on "delete all") count
+    // as deleting each of their records.
+    for (final col in {...collections.keys, ..._snapshot.keys}) {
       final current = {
-        for (final item in e.value) readString(item['id']): jsonEncode(item),
+        for (final item in collections[col] ?? const <Map<String, dynamic>>[])
+          readString(item['id']): jsonEncode(item),
       };
       final before = _snapshot[col] ?? const <String, String>{};
       final stamps = _meta.stamps.putIfAbsent(col, () => {});
@@ -282,13 +406,13 @@ class AppStore extends ChangeNotifier {
       }
       _snapshot[col] = current;
     }
-    final settings = jsonEncode(_settings.toSyncJson());
+    final settings = jsonEncode(_syncedSettingsJson());
     if (settings != _settingsSnapshot) {
       _settingsSnapshot = settings;
       _meta.settingsAt = now();
       changed = true;
     }
-    final focus = jsonEncode(_focus?.toJson());
+    final focus = jsonEncode(_focusJson());
     if (focus != _focusSnapshot) {
       _focusSnapshot = focus;
       _meta.focusAt = now();
@@ -752,16 +876,14 @@ class AppStore extends ChangeNotifier {
 
   /// Deletes all data but keeps the settings.
   Future<void> clearAll() {
-    _subjects.clear();
-    _sessions.clear();
-    _studyItems.clear();
-    _tasks.clear();
-    _assessments.clear();
-    _projects.clear();
-    _grades.clear();
-    _studySessions.clear();
-    _attendance.clear();
-    _focus = null;
+    for (final r in _records) {
+      r.items.clear();
+    }
+    // Empty rather than gone, so the document still names every list its
+    // deletions are recorded for.
+    _otherCollections.updateAll((_, _) => []);
+    _focus = _focusLoaded = null;
+    _focusRaw = null;
     return _changed();
   }
 
@@ -769,5 +891,55 @@ class AppStore extends ChangeNotifier {
   void dispose() {
     _localChanges.close();
     super.dispose();
+  }
+}
+
+/// One synced list of records.
+///
+/// A record this device didn't edit is saved back exactly as it was loaded,
+/// with any fields or values only a newer app version understands (an
+/// unknown status, a field inside a project step…). An edited record keeps
+/// the fields this version doesn't know, under the ones it wrote.
+class _Records<T> {
+  _Records(this.name, this.parse, this.encode, this.idOf);
+
+  final String name;
+  final T Function(Map<String, dynamic>) parse;
+  final Map<String, dynamic> Function(T) encode;
+  final String Function(T) idOf;
+  final List<T> items = [];
+
+  /// Record id -> the record as last loaded and the map it came from. Kept
+  /// after a record is deleted, so undoing the deletion restores it whole.
+  final Map<String, ({T item, Map<String, dynamic> raw})> _loaded = {};
+
+  /// Replaces the records with the saved list [raw]. A malformed record is
+  /// skipped rather than losing everything.
+  void load(Object? raw) {
+    items.clear();
+    if (raw is! List) return;
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final map = Map<String, dynamic>.from(e);
+      final T item;
+      try {
+        item = parse(map);
+      } catch (_) {
+        continue;
+      }
+      items.add(item);
+      _loaded[idOf(item)] = (item: item, raw: map);
+    }
+  }
+
+  List<Map<String, dynamic>> toJson() => [
+    for (final item in items) _json(item),
+  ];
+
+  Map<String, dynamic> _json(T item) {
+    final loaded = _loaded[idOf(item)];
+    if (loaded == null) return encode(item);
+    if (identical(loaded.item, item)) return Map.of(loaded.raw);
+    return {...loaded.raw, ...encode(item)};
   }
 }

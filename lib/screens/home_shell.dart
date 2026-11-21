@@ -11,14 +11,16 @@ import '../sync/sync_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/study_stats.dart';
 import '../widgets/common.dart';
+import 'app_tabs.dart';
 import 'dashboard_screen.dart';
 import 'focus_screen.dart';
+import 'more_screen.dart';
 import 'schedule_screen.dart';
 import 'study_screen.dart';
 import 'subjects_screen.dart';
 import 'tasks_hub_screen.dart';
 
-/// The bottom-navigation shell holding the five main sections.
+/// The navigation shell holding the main sections (see [AppTabs]).
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -112,7 +114,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   void _navigate(int tab, [int? subTab]) {
-    setState(() => _index = tab.clamp(0, 4));
+    setState(() => _index = tab.clamp(0, AppTabs.count - 1));
     if (subTab != null) _tasksTab.value = subTab;
   }
 
@@ -122,6 +124,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     (Icons.auto_stories_outlined, Icons.auto_stories_rounded, 'المذاكرة'),
     (Icons.checklist_rounded, Icons.fact_check_rounded, 'المهام'),
     (Icons.school_outlined, Icons.school_rounded, 'المواد'),
+    (Icons.grid_view_outlined, Icons.grid_view_rounded, 'المزيد'),
+  ];
+
+  /// The tabs in the phone's bottom bar; the subjects open from "more".
+  static const _barTabs = [
+    AppTabs.home,
+    AppTabs.schedule,
+    AppTabs.study,
+    AppTabs.tasks,
+    AppTabs.more,
   ];
 
   @override
@@ -134,6 +146,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         const StudyScreen(),
         TasksHubScreen(requestedTab: _tasksTab),
         const SubjectsScreen(),
+        MoreScreen(onNavigate: _navigate),
       ],
     );
     final width = MediaQuery.sizeOf(context).width;
@@ -201,10 +214,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     return Scaffold(
       body: pages,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _navigate,
+        selectedIndex: _barTabs.indexOf(
+          _index == AppTabs.subjects ? AppTabs.more : _index,
+        ),
+        onDestinationSelected: (i) => _navigate(_barTabs[i]),
         destinations: [
-          for (final d in _destinations)
+          for (final d in [for (final t in _barTabs) _destinations[t]])
             NavigationDestination(
               icon: Icon(d.$1),
               selectedIcon: Icon(d.$2),

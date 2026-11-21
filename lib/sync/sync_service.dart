@@ -339,6 +339,8 @@ String describeSyncError(Object e) {
     if (e.code == '42501') {
       return 'السيرفر رافض الحفظ — شغّل كود الـ SQL من خطوات التجهيز تاني';
     }
+    // Raised on purpose by `supabase/setup.sql`, already in Arabic.
+    if (e.code == 'P0001') return e.message;
     return 'حصلت مشكلة في السيرفر: ${e.message}';
   }
   if (e is AuthException) return describeAuthError(e);

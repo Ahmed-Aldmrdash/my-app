@@ -90,11 +90,13 @@ class AppSettings {
     'breakMinutes': breakMinutes,
   };
 
-  /// Settings shared between devices. The theme and the permission prompt
-  /// stay per device.
-  Map<String, dynamic> toSyncJson() => toJson()
-    ..remove('themeMode')
-    ..remove('askedPermissions');
+  /// Keys of [toJson] that stay on this device: the theme and whether the
+  /// permission prompt was shown.
+  static const localOnlyKeys = {'themeMode', 'askedPermissions'};
+
+  /// Settings shared between devices (everything but [localOnlyKeys]).
+  Map<String, dynamic> toSyncJson() =>
+      toJson()..removeWhere((k, _) => localOnlyKeys.contains(k));
 
   /// These settings with the shared ones replaced by [synced].
   AppSettings withSynced(Map<String, dynamic> synced) => AppSettings.fromJson({

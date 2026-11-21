@@ -388,6 +388,30 @@ class _SyncScreenState extends State<SyncScreen> {
             ),
           ],
         ),
+        FormSection(
+          title: 'حماية بياناتك من النسخ القديمة',
+          icon: Icons.security_update_good_rounded,
+          children: [
+            Text(
+              'لو جهزت المزامنة قبل نسخة 0.4: شغّل كود الـ SQL تاني مرة واحدة '
+              'في Supabase (SQL Editor ← Run). كده أي جهاز لسه عليه نسخة قديمة '
+              'من التطبيق مش هيقدر يمسح البيانات الجديدة لحد ما تحدّثه. '
+              'الكود آمن لو اتشغل أكتر من مرة.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(
+                  const ClipboardData(text: supabaseSetupSql),
+                );
+                if (context.mounted) showSnack(context, 'اتنسخ كود الـ SQL ✓');
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('نسخ كود الـ SQL'),
+            ),
+          ],
+        ),
         if (code != null)
           FormSection(
             title: 'على جهازك التاني',

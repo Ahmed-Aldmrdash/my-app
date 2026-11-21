@@ -34,6 +34,35 @@ create policy "planner_state_update_own" on public.planner_state
 
 grant select, insert, update on public.planner_state to authenticated;
 
+-- Older app versions (before 0.4) drop data they don't know about. The
+-- data says the oldest format still allowed to save ("minFormat"); refuse
+-- saves from apps older than that until they are updated.
+create or replace function public.planner_state_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  min_format numeric := case
+    when jsonb_typeof(old.data -> 'minFormat') = 'number'
+    then (old.data ->> 'minFormat')::numeric else 1 end;
+  new_format numeric := case
+    when jsonb_typeof(new.data -> 'v') = 'number'
+    then (new.data ->> 'v')::numeric else 1 end;
+begin
+  if new_format < min_format then
+    raise exception 'نسخة التطبيق دي قديمة — حدّثها عشان المزامنة تشتغل'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists planner_state_guard on public.planner_state;
+create trigger planner_state_guard
+  before update on public.planner_state
+  for each row execute function public.planner_state_guard();
+
 -- Live updates: devices hear about each other's changes right away.
 do $$
 begin
