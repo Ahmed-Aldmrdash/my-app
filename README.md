@@ -65,7 +65,7 @@
 
 ## التشغيل
 
-محتاج [Flutter](https://docs.flutter.dev/get-started/install) (3.38 أو أحدث).
+محتاج [Flutter](https://docs.flutter.dev/get-started/install) (3.50 أو أحدث).
 
 ```bash
 flutter pub get
