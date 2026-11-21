@@ -10,7 +10,9 @@ import '../utils/json.dart';
 /// written back exactly as they came, and lists of records added by newer
 /// versions are merged like the known ones. Newer versions must therefore
 /// only add lists of records with a string `id`, fields inside records, and
-/// settings; other new top-level keys would be dropped.
+/// settings; other new top-level keys would be dropped. A merged document
+/// always says this app's format, even when it carries data a newer app
+/// wrote, so `v` must never decide whether data needs migrating.
 const syncFormat = 2;
 
 /// The oldest format allowed to save once this app has saved (`minFormat`).
@@ -42,6 +44,12 @@ const syncedCollections = <String>[
   'grades',
   'studySessions',
   'attendance',
+  'finals',
+  'planEntries',
+  'notes',
+  'flashcards',
+  'semesters',
+  'planCourses',
 ];
 
 /// When each synced record was last changed or deleted on any device, in
@@ -94,6 +102,58 @@ class SyncMeta {
       focusAt: readInt(raw['focusAt']),
     );
   }
+}
+
+/// [raw] with the fields that changed from [before] to [now] put on top.
+///
+/// [before] and [now] are what this app made of a record before and after an
+/// edit; [raw] is the record as it was stored, possibly with fields and
+/// values only a newer version understands. Only what the edit changed is
+/// written over it, and lists of records (maps with an `id`, like a
+/// project's steps) are handled element by element the same way.
+Map<String, dynamic> overlayChanges(
+  Map<String, dynamic> raw,
+  Map<String, dynamic> before,
+  Map<String, dynamic> now,
+) {
+  final out = Map<String, dynamic>.of(raw);
+  now.forEach((key, value) {
+    final old = before[key];
+    if (canonicalJson(old) == canonicalJson(value)) return;
+    out[key] = _overlayValue(raw[key], old, value);
+  });
+  return out;
+}
+
+Object? _overlayValue(Object? raw, Object? before, Object? now) {
+  if (raw is Map && before is Map && now is Map) {
+    return overlayChanges(
+      Map<String, dynamic>.from(raw),
+      Map<String, dynamic>.from(before),
+      Map<String, dynamic>.from(now),
+    );
+  }
+  if (raw is List && before is List && now is List) {
+    Map<String, Map<String, dynamic>> byId(List<Object?> list) => {
+      for (final e in list)
+        if (e is Map && e['id'] is String)
+          e['id'] as String: Map<String, dynamic>.from(e),
+    };
+    final rawById = byId(raw);
+    final beforeById = byId(before);
+    return [
+      for (final e in now)
+        if (e is Map && rawById[e['id']] != null && beforeById[e['id']] != null)
+          overlayChanges(
+            rawById[e['id']]!,
+            beforeById[e['id']]!,
+            Map<String, dynamic>.from(e),
+          )
+        else
+          e,
+    ];
+  }
+  return now;
 }
 
 /// JSON with object keys sorted, so equal data always encodes the same.

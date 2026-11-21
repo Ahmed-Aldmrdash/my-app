@@ -378,6 +378,255 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
         ),
   ];
 
+  final finals = [
+    FinalExam(
+      id: 'demo-fx-prog',
+      subjectId: prog.id,
+      start: day(24, 9),
+      place: 'مدرج 3',
+      seat: '1042',
+    ),
+    FinalExam(
+      id: 'demo-fx-db',
+      subjectId: db.id,
+      start: day(27, 9),
+      place: 'مدرج 1',
+      seat: '1042',
+    ),
+    FinalExam(
+      id: 'demo-fx-math',
+      subjectId: math.id,
+      start: day(31, 12),
+      durationMinutes: 180,
+      place: 'الصالة المغطاة',
+      seat: '1042',
+    ),
+    FinalExam(
+      id: 'demo-fx-se',
+      subjectId: se.id,
+      start: day(34, 9),
+      place: 'مدرج 2',
+      seat: '1042',
+    ),
+  ];
+
+  final notes = [
+    Note(
+      id: 'demo-n-1',
+      subjectId: db.id,
+      title: 'ملخص الـ Normalization',
+      body:
+          '1NF: كل خانة فيها قيمة واحدة ومفيش أعمدة متكررة\n'
+          '2NF: كل عمود معتمد على المفتاح كله مش جزء منه\n'
+          '3NF: مفيش عمود معتمد على عمود تاني غير المفتاح',
+      pinned: true,
+      createdAt: day(-4, 20),
+      updatedAt: day(-4, 20),
+    ),
+    Note(
+      id: 'demo-n-2',
+      kind: NoteKind.link,
+      subjectId: prog.id,
+      title: 'شرح الـ Recursion بالعربي',
+      url: 'https://www.youtube.com/results?search_query=recursion+شرح',
+      createdAt: day(-3, 18),
+      updatedAt: day(-3, 18),
+    ),
+    Note(
+      id: 'demo-n-3',
+      kind: NoteKind.link,
+      subjectId: math.id,
+      title: 'شيتات السكشن على الدرايف',
+      url: 'https://drive.google.com/',
+      body: 'الدكتور قال الامتحان هيبقى شبه شيت 4 و5',
+      createdAt: day(-2, 15),
+      updatedAt: day(-2, 15),
+    ),
+  ];
+
+  final cards = [
+    for (final (i, subject, front, back) in [
+      (
+        1,
+        prog,
+        'إيه الفرق بين Stack و Queue؟',
+        'Stack: آخر حاجة دخلت أول حاجة تطلع (LIFO)\n'
+            'Queue: أول حاجة دخلت أول حاجة تطلع (FIFO)',
+      ),
+      (
+        2,
+        prog,
+        'يعني إيه Big-O؟',
+        'طريقة نوصف بيها الوقت اللي الخوارزمية بتاخده لما حجم الدخل يكبر',
+      ),
+      (
+        3,
+        db,
+        'يعني إيه Primary Key؟',
+        'عمود (أو أكتر) قيمته مش بتتكرر وبيميّز كل صف في الجدول',
+      ),
+      (
+        4,
+        db,
+        'إمتى نستخدم LEFT JOIN؟',
+        'لما تكون عايز كل صفوف الجدول الشمال حتى لو مالهاش مقابل في اليمين',
+      ),
+      (5, math, 'مشتقة sin(x)؟', 'cos(x)'),
+    ])
+      Flashcard(
+        id: 'demo-fc-$i',
+        subjectId: subject.id,
+        front: front,
+        back: back,
+        createdAt: day(-5),
+        // One was already reviewed and is due again today.
+        dueDate: i == 3 ? day(0) : null,
+        stage: i == 3 ? 1 : 0,
+        reviews: i == 3 ? 1 : 0,
+      ),
+  ];
+
+  const sem1 = Semester(
+    id: 'demo-sem-1',
+    name: 'الترم الأول 2025/2026',
+    order: 1,
+  );
+  const sem2 = Semester(
+    id: 'demo-sem-2',
+    name: 'الترم التاني 2025/2026',
+    order: 2,
+  );
+  PlanCourse course(
+    String id,
+    String name,
+    String code,
+    int hours,
+    String group,
+    int level, {
+    Semester? done,
+    double? percent,
+    String? letter,
+    List<String> prereqs = const [],
+    Subject? current,
+  }) => PlanCourse(
+    id: 'demo-c-$id',
+    name: name,
+    code: code,
+    creditHours: hours,
+    group: group,
+    level: level,
+    semesterId: done?.id,
+    percent: percent,
+    letter: letter,
+    prerequisites: [for (final p in prereqs) 'demo-c-$p'],
+    subjectId: current?.id,
+  );
+  final courses = [
+    course(
+      'prog1',
+      'برمجة 1',
+      'CS101',
+      3,
+      'متطلبات كلية',
+      1,
+      done: sem1,
+      percent: 88,
+      letter: 'A-',
+    ),
+    course(
+      'math1',
+      'رياضيات 1',
+      'MA101',
+      3,
+      'متطلبات كلية',
+      1,
+      done: sem1,
+      percent: 79,
+      letter: 'B',
+    ),
+    course(
+      'eng',
+      'لغة إنجليزية',
+      'HU101',
+      2,
+      'متطلبات جامعة',
+      1,
+      done: sem1,
+      percent: 92,
+      letter: 'A',
+    ),
+    course(
+      'ds',
+      'هياكل البيانات',
+      'CS102',
+      3,
+      'متطلبات قسم',
+      1,
+      done: sem2,
+      percent: 84,
+      letter: 'B+',
+      prereqs: ['prog1'],
+    ),
+    course(
+      'math2',
+      'رياضيات 2',
+      'MA102',
+      3,
+      'متطلبات كلية',
+      1,
+      done: sem2,
+      percent: 71,
+      letter: 'B-',
+      prereqs: ['math1'],
+    ),
+    course(
+      'prog2',
+      'برمجة 2',
+      'CS201',
+      3,
+      'متطلبات قسم',
+      2,
+      prereqs: ['prog1'],
+      current: prog,
+    ),
+    course(
+      'net',
+      'شبكات الحاسب',
+      'CS311',
+      3,
+      'متطلبات قسم',
+      3,
+      prereqs: ['ds'],
+    ),
+    course(
+      'algo',
+      'الخوارزميات',
+      'CS301',
+      3,
+      'متطلبات قسم',
+      3,
+      prereqs: ['prog2', 'ds'],
+    ),
+    course(
+      'ai',
+      'الذكاء الاصطناعي',
+      'CS401',
+      3,
+      'اختياري',
+      4,
+      prereqs: ['algo'],
+    ),
+  ];
+
+  // The current settings as saved (with any a newer app version added),
+  // plus a sample semester name and graduation hours if none are set.
+  final settings = {
+    ...store.toJson()['settings'] as Map<String, dynamic>,
+    if (store.settings.semesterName.isEmpty)
+      'semesterName': 'الترم الأول 2026/2027',
+    if (store.settings.graduationHours == 0) 'graduationHours': 140,
+  };
+
   final data = {
     'version': AppStore.dataVersion,
     'subjects': subjects.map((e) => e.toJson()).toList(),
@@ -389,7 +638,12 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     'grades': grades.map((e) => e.toJson()).toList(),
     'studySessions': studySessions.map((e) => e.toJson()).toList(),
     'attendance': attendance.map((e) => e.toJson()).toList(),
-    'settings': store.settings.toJson(),
+    'finals': finals.map((e) => e.toJson()).toList(),
+    'notes': notes.map((e) => e.toJson()).toList(),
+    'flashcards': cards.map((e) => e.toJson()).toList(),
+    'semesters': [sem1.toJson(), sem2.toJson()],
+    'planCourses': courses.map((e) => e.toJson()).toList(),
+    'settings': settings,
   };
   return store.importJson(jsonEncode(data));
 }

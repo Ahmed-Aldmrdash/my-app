@@ -16,6 +16,8 @@ import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
 import '../widgets/quick_add.dart';
 import 'app_tabs.dart';
+import 'finals_screen.dart';
+import 'flashcards_screen.dart';
 import 'focus_screen.dart';
 import 'grade_form.dart';
 import 'project_detail_screen.dart';
@@ -73,6 +75,7 @@ class _DashboardBody extends StatelessWidget {
               if (store.subjects.isEmpty) const _Onboarding(),
               const SizedBox(height: 4),
               const _QuickActions(),
+              _FinalsCard(now: now),
               _NextClassCard(now: now, onNavigate: onNavigate),
               _TodaySchedule(now: now, onNavigate: onNavigate),
               _ReviewsDue(now: now, onNavigate: onNavigate),
@@ -699,13 +702,15 @@ class _ReviewsDue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final due = context.watch<AppStore>().dueReviews(now);
-    if (due.isEmpty) return const SizedBox.shrink();
+    final store = context.watch<AppStore>();
+    final due = store.dueReviews(now);
+    final cards = store.dueCards(now).length;
+    if (due.isEmpty && cards == 0) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionHeader(
-          'مراجعات النهارده (${due.length})',
+          'مراجعات النهارده (${due.length + (cards > 0 ? 1 : 0)})',
           icon: Icons.replay_circle_filled_rounded,
           trailing: due.length > 3
               ? SeeAllButton('الكل', onPressed: () => onNavigate(2))
@@ -714,7 +719,23 @@ class _ReviewsDue extends StatelessWidget {
         AppCard(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
-            children: [for (final i in due.take(3)) ReviewTile(item: i)],
+            children: [
+              if (cards > 0)
+                ListTile(
+                  onTap: () => pushPage(context, const FlashcardReviewScreen()),
+                  leading: const IconBadge(
+                    Icons.style_rounded,
+                    color: AppColors.cyan,
+                  ),
+                  title: Text(
+                    'راجع ${countText(cards, 'كارت', 'كارتين', 'كروت', 'كارت')}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: const Text('الفلاش كاردز اللي جه ميعادها'),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                ),
+              for (final i in due.take(3)) ReviewTile(item: i),
+            ],
           ),
         ),
       ],
@@ -929,6 +950,87 @@ class _ProjectsPreview extends StatelessWidget {
           trailing: SeeAllButton('الكل', onPressed: () => onNavigate(3, 3)),
         ),
         for (final p in projects.take(3)) ProjectCard(project: p, now: now),
+      ],
+    );
+  }
+}
+
+/// The next final exam with a countdown and today's study plan, during the
+/// finals season.
+class _FinalsCard extends StatelessWidget {
+  const _FinalsCard({required this.now});
+
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final upcoming = store.upcomingFinals(now);
+    if (upcoming.isEmpty || upcoming.first.start.difference(now).inDays > 45) {
+      return const SizedBox.shrink();
+    }
+    final next = upcoming.first;
+    final subject = store.subjectById(next.subjectId);
+    final today = store.planOn(now);
+    final done = today.where((e) => e.done).length;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeader(
+          'الفاينال',
+          icon: Icons.workspace_premium_rounded,
+          trailing: SeeAllButton(
+            'الخطة',
+            onPressed: () =>
+                pushPage(context, const FinalsScreen(initialTab: 1)),
+          ),
+        ),
+        AppCard(
+          onTap: () => pushPage(context, const FinalsScreen()),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  IconBadge(
+                    Icons.workspace_premium_rounded,
+                    color: subjectColor(subject, context),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          subject?.name ?? '',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '${friendlyDateTime(next.start, now)}'
+                          '${upcoming.length > 1 ? ' • فاضل ${countText(upcoming.length, 'امتحان', 'امتحانين', 'امتحانات', 'امتحان')}' : ''}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  CountdownPill(due: next.start, now: now),
+                ],
+              ),
+              if (today.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'خطة النهارده: خلصت $done من ${today.length}',
+                  style: theme.textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                RoundedProgress(value: done / today.length),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }

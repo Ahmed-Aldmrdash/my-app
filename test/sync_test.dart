@@ -600,6 +600,87 @@ void main() {
       expect((s.syncDoc()['tasks'] as List).single['colour'], 'red');
     });
 
+    test('editing a record only writes what the edit changed', () async {
+      final s = AppStore(
+        MemoryStorage(
+          jsonEncode({
+            'studyItems': [
+              {
+                'id': 'l1',
+                'subjectId': 's',
+                'title': 'old',
+                'status': 'mastered',
+                'releaseDate': '2026-10-01T00:00:00.000',
+              },
+            ],
+            'projects': [
+              {
+                'id': 'p1',
+                'title': 'P',
+                'steps': [
+                  {'id': 'a', 'title': 'x', 'done': false, 'due': '12-01'},
+                  {'id': 'b', 'title': 'y', 'done': false, 'due': '12-05'},
+                ],
+              },
+            ],
+          }),
+        ),
+      );
+      await s.load();
+      await s.saveStudyItem(
+        StudyItem(
+          id: 'l1',
+          subjectId: 's',
+          title: 'renamed',
+          releaseDate: s.studyItems.single.releaseDate,
+        ),
+      );
+      final project = s.projects.single;
+      await s.updateProjectSteps('p1', [
+        project.steps.first.copyWith(done: true),
+        project.steps.last,
+      ]);
+
+      final doc = s.syncDoc();
+      final item = (doc['studyItems'] as List).single as Map;
+      expect(item['title'], 'renamed');
+      expect(item['status'], 'mastered');
+      final steps = (doc['projects'] as List).single['steps'] as List;
+      expect(steps.first['done'], isTrue);
+      expect(steps.first['due'], '12-01');
+      expect(steps.last['due'], '12-05');
+    });
+
+    test('setting a value back is written, not the old server value', () async {
+      final s = AppStore(
+        MemoryStorage(
+          jsonEncode({
+            'settings': {'focusMinutes': 240},
+          }),
+        ),
+      );
+      await s.load();
+      expect(s.syncDoc()['settings']['focusMinutes'], 240);
+      await s.updateSettings(s.settings.copyWith(focusMinutes: 30));
+      expect(s.syncDoc()['settings']['focusMinutes'], 30);
+      await s.updateSettings(s.settings.copyWith(focusMinutes: 180));
+      expect(s.syncDoc()['settings']['focusMinutes'], 180);
+      // Changing something else leaves it alone.
+      await s.updateSettings(s.settings.copyWith(dailyGoalMinutes: 60));
+      expect(s.syncDoc()['settings']['focusMinutes'], 180);
+    });
+
+    test(
+      'loading the sample data keeps settings from newer versions',
+      () async {
+        final s = AppStore(MemoryStorage(jsonEncode(newerSave())));
+        await s.load();
+        await loadDemoData(s, DateTime(2026, 10, 5, 9));
+        expect(s.syncDoc()['settings']['prayerCity'], 'Cairo');
+        expect(s.settings.studentName, 'أحمد');
+      },
+    );
+
     test(
       'restoring a backup with other unknown settings stamps them',
       () async {

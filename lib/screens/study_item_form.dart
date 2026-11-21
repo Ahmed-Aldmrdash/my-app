@@ -7,6 +7,8 @@ import '../utils/ids.dart';
 import '../utils/labels.dart';
 import '../widgets/common.dart';
 import '../widgets/subject_picker.dart';
+import 'flashcards_screen.dart';
+import 'notes_screen.dart';
 
 /// Adds or edits a lecture / section / chapter to study.
 class StudyItemForm extends StatefulWidget {
@@ -218,9 +220,53 @@ class _StudyItemFormState extends State<StudyItemForm> {
                 label: const Text('حفظ وإضافة اللي بعدها'),
               ),
             ],
+            if (editing) ...[
+              const SizedBox(height: 16),
+              _LectureExtras(item: widget.item!),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Shortcuts to the notes and flashcards of a saved lecture.
+class _LectureExtras extends StatelessWidget {
+  const _LectureExtras({required this.item});
+
+  final StudyItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final notes = store.notesFor(studyItemId: item.id).length;
+    final cards = store.cardsFor(item.subjectId, studyItemId: item.id).length;
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () =>
+                pushPage(context, NotesScreen(studyItemId: item.id)),
+            icon: const Icon(Icons.sticky_note_2_outlined),
+            label: Text('ملاحظاتها ($notes)'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => pushPage(
+              context,
+              FlashcardForm(
+                initialSubjectId: item.subjectId,
+                initialStudyItemId: item.id,
+              ),
+            ),
+            icon: const Icon(Icons.style_outlined),
+            label: Text('كارت ليها ($cards)'),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -13,6 +13,8 @@ import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import 'app_tabs.dart';
 import 'dashboard_screen.dart';
+import 'finals_screen.dart';
+import 'flashcards_screen.dart';
 import 'focus_screen.dart';
 import 'more_screen.dart';
 import 'schedule_screen.dart';
@@ -98,11 +100,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await store.updateSettings(store.settings.copyWith(askedPermissions: true));
   }
 
-  /// Payloads look like "tab:3:1" (tab 3, sub-tab 1) or "focus".
+  /// Payloads look like "tab:3:1" (tab 3, sub-tab 1), "focus" or
+  /// "page:finals" (see [ReminderTarget]).
   void _openPayload(String payload) {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    if (payload == ReminderTarget.focus) {
-      pushPage(context, const FocusScreen());
+    final page = switch (payload) {
+      ReminderTarget.focus => const FocusScreen(),
+      ReminderTarget.finals => const FinalsScreen(),
+      ReminderTarget.flashcards => const FlashcardReviewScreen(),
+      _ => null,
+    };
+    if (page != null) {
+      pushPage(context, page);
       return;
     }
     final parts = payload.split(':');

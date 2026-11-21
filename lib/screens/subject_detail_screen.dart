@@ -12,8 +12,11 @@ import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
 import 'assessment_form.dart';
+import 'final_exam_form.dart';
+import 'flashcards_screen.dart';
 import 'focus_screen.dart';
 import 'grade_form.dart';
+import 'notes_screen.dart';
 import 'session_form.dart';
 import 'study_item_form.dart';
 import 'subject_form.dart';
@@ -30,7 +33,7 @@ class SubjectDetailScreen extends StatefulWidget {
 
 class _SubjectDetailScreenState extends State<SubjectDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this)
+  late final TabController _tabs = TabController(length: 5, vsync: this)
     ..addListener(() => setState(() {}));
 
   @override
@@ -44,8 +47,8 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen>
       context,
       'تمسح مادة "${s.name}"؟',
       message:
-          'هيتمسح معاها جدولها ومحاضراتها وكويزاتها ودرجاتها وحضورها. '
-          'التاسكات والمشاريع هتفضل.',
+          'هيتمسح معاها جدولها ومحاضراتها وكويزاتها ودرجاتها وحضورها '
+          'وامتحانها النهائي وملاحظاتها وكروتها. التاسكات والمشاريع هتفضل.',
     );
     if (!ok || !mounted) return;
     Navigator.pop(context);
@@ -88,7 +91,11 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen>
         'كويز / أسايمنت',
         () => pushPage(context, AssessmentForm(initialSubjectId: subject.id)),
       ),
-      _ => ('سجل حضور', () => showAttendanceSheet(context, subject)),
+      3 => ('سجل حضور', () => showAttendanceSheet(context, subject)),
+      _ => (
+        'ملاحظة أو لينك',
+        () => pushPage(context, NoteForm(initialSubjectId: subject.id)),
+      ),
     };
 
     return Scaffold(
@@ -181,6 +188,9 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen>
             ),
             bottom: TabBar(
               controller: _tabs,
+              // Five tabs don't fit side by side on small phones.
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               labelColor: onColor,
               unselectedLabelColor: onColor.withValues(alpha: 0.7),
               indicatorColor: onColor,
@@ -190,6 +200,7 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen>
                 Tab(text: 'المذاكرة'),
                 Tab(text: 'المواعيد'),
                 Tab(text: 'الحضور'),
+                Tab(text: 'الملاحظات'),
               ],
             ),
           ),
@@ -201,6 +212,7 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen>
             _StudyTab(subject: subject),
             _DeadlinesTab(subject: subject),
             _AttendanceTab(subject: subject),
+            _NotesTab(subject: subject),
           ],
         ),
       ),
@@ -901,4 +913,115 @@ Future<void> showAttendanceSheet(BuildContext context, Subject subject) async {
       present: present!,
     ),
   );
+}
+
+/// The subject's final exam, flashcards, notes and links.
+class _NotesTab extends StatelessWidget {
+  const _NotesTab({required this.subject});
+
+  final Subject subject;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final now = DateTime.now();
+    final theme = Theme.of(context);
+    final finals = store.finalsFor(subject.id);
+    final cards = store.cardsFor(subject.id);
+    final due = store.dueCards(now, subjectId: subject.id);
+    final notes = store.notesFor(subjectId: subject.id);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      children: [
+        for (final f in finals)
+          AppCard(
+            onTap: () => pushPage(context, FinalExamForm(exam: f)),
+            child: Row(
+              children: [
+                const IconBadge(
+                  Icons.workspace_premium_rounded,
+                  color: AppColors.coral,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('الفاينال', style: theme.textTheme.titleSmall),
+                      Text(
+                        [
+                          '${formatLongDate(f.start)} • ${formatTime(f.start)}',
+                          if (f.place.isNotEmpty) f.place,
+                        ].join(' • '),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                if (!f.isOver(now)) CountdownPill(due: f.start, now: now),
+              ],
+            ),
+          ),
+        if (finals.isEmpty)
+          OutlinedButton.icon(
+            onPressed: () =>
+                pushPage(context, FinalExamForm(initialSubjectId: subject.id)),
+            icon: const Icon(Icons.workspace_premium_outlined),
+            label: const Text('ضيف ميعاد الفاينال'),
+          ),
+        AppCard(
+          onTap: () =>
+              pushPage(context, FlashcardsScreen(subjectId: subject.id)),
+          child: Row(
+            children: [
+              const IconBadge(Icons.style_rounded, color: AppColors.cyan),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('الفلاش كاردز', style: theme.textTheme.titleSmall),
+                    Text(
+                      cards.isEmpty
+                          ? 'اعمل كروت سؤال وجواب للمادة دي'
+                          : '${cards.length} كارت • ${due.length} للمراجعة النهارده',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (due.isNotEmpty)
+                FilledButton(
+                  onPressed: () => pushPage(
+                    context,
+                    FlashcardReviewScreen(subjectId: subject.id),
+                  ),
+                  child: const Text('راجع'),
+                ),
+            ],
+          ),
+        ),
+        SectionHeader(
+          'الملاحظات واللينكات',
+          icon: Icons.sticky_note_2_rounded,
+          trailing: notes.isEmpty
+              ? null
+              : SeeAllButton(
+                  'دوّر',
+                  onPressed: () =>
+                      pushPage(context, NotesScreen(subjectId: subject.id)),
+                ),
+        ),
+        if (notes.isEmpty)
+          const EmptyState(
+            icon: Icons.sticky_note_2_rounded,
+            color: AppColors.amber,
+            title: 'لسه مفيش ملاحظات',
+            message: 'احفظ ملخصاتك ولينكات الدرايف واليوتيوب بتاعة المادة هنا',
+          )
+        else
+          for (final n in notes) NoteTile(note: n, showSubject: false),
+      ],
+    );
+  }
 }

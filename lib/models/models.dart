@@ -1,8 +1,13 @@
+export 'academic.dart';
 export 'app_settings.dart';
 export 'assessment.dart';
 export 'attendance.dart';
 export 'class_session.dart';
+export 'final_exam.dart';
+export 'flashcard.dart';
 export 'grade_entry.dart';
+export 'note.dart';
+export 'plan_entry.dart';
 export 'project.dart';
 export 'study_item.dart';
 export 'study_session.dart';

@@ -24,6 +24,9 @@ class AppSettings {
     this.dailyGoalMinutes = 120,
     this.focusMinutes = 25,
     this.breakMinutes = 5,
+    this.planPerDay = 4,
+    this.semesterName = '',
+    this.graduationHours = 0,
   });
 
   final String studentName;
@@ -50,6 +53,15 @@ class AppSettings {
   final int focusMinutes;
   final int breakMinutes;
 
+  /// How many entries the finals study planner puts on each day.
+  final int planPerDay;
+
+  /// The current semester's name, e.g. "الترم التاني 2025/2026".
+  final String semesterName;
+
+  /// Credit hours needed to graduate; 0 when not set.
+  final int graduationHours;
+
   AppSettings copyWith({
     String? studentName,
     bool? notificationsEnabled,
@@ -62,6 +74,9 @@ class AppSettings {
     int? dailyGoalMinutes,
     int? focusMinutes,
     int? breakMinutes,
+    int? planPerDay,
+    String? semesterName,
+    int? graduationHours,
   }) => AppSettings(
     studentName: studentName ?? this.studentName,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -74,6 +89,9 @@ class AppSettings {
     dailyGoalMinutes: dailyGoalMinutes ?? this.dailyGoalMinutes,
     focusMinutes: focusMinutes ?? this.focusMinutes,
     breakMinutes: breakMinutes ?? this.breakMinutes,
+    planPerDay: planPerDay ?? this.planPerDay,
+    semesterName: semesterName ?? this.semesterName,
+    graduationHours: graduationHours ?? this.graduationHours,
   );
 
   Map<String, dynamic> toJson() => {
@@ -88,6 +106,9 @@ class AppSettings {
     'dailyGoalMinutes': dailyGoalMinutes,
     'focusMinutes': focusMinutes,
     'breakMinutes': breakMinutes,
+    'planPerDay': planPerDay,
+    'semesterName': semesterName,
+    'graduationHours': graduationHours,
   };
 
   /// Keys of [toJson] that stay on this device: the theme and whether the
@@ -125,5 +146,8 @@ class AppSettings {
     dailyGoalMinutes: readInt(j['dailyGoalMinutes'], 120).clamp(10, 16 * 60),
     focusMinutes: readInt(j['focusMinutes'], 25).clamp(1, 180),
     breakMinutes: readInt(j['breakMinutes'], 5).clamp(1, 60),
+    planPerDay: readInt(j['planPerDay'], 4).clamp(1, 12),
+    semesterName: readString(j['semesterName']),
+    graduationHours: readInt(j['graduationHours']).clamp(0, 400),
   );
 }

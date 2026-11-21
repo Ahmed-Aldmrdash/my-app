@@ -48,6 +48,12 @@ Future<void> _tapTab(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Closes the page on top, like the app bar's back button.
+Future<void> _back(WidgetTester tester) async {
+  tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+  await tester.pumpAndSettle();
+}
+
 /// On phones the subjects open from the "more" tab.
 Future<void> _openSubjects(WidgetTester tester) async {
   await _tapTab(tester, 'المزيد');
@@ -74,9 +80,61 @@ void main() {
     expect(tester.widget<NavigationBar>(bar).selectedIndex, 4);
 
     await _tapTab(tester, 'المزيد');
+    await _scrollTo(tester, find.text('الإعدادات'));
     await tester.tap(find.text('الإعدادات'));
     await tester.pumpAndSettle();
     expect(find.text('اسمك (عشان أناديك بيه)'), findsOneWidget);
+  });
+
+  testWidgets('finals, plan, flashcards, notes and the archive', (
+    tester,
+  ) async {
+    final store = await _pumpApp(tester, demo: true);
+    Future<void> openFromMore(String title) async {
+      // Snackbars would cover the buttons at the bottom of the next page.
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .clearSnackBars();
+      await _tapTab(tester, 'المزيد');
+      await _scrollTo(tester, find.text(title));
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+    }
+
+    await openFromMore('الفاينال');
+    expect(find.text('الامتحان الجاي'), findsOneWidget);
+    await tester.tap(find.text('خطة المذاكرة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('اعمل الخطة أوتوماتيك'));
+    await tester.pumpAndSettle();
+    expect(store.planEntries, isNotEmpty);
+    expect(store.planEntries.every((e) => e.auto), isTrue);
+    await _back(tester);
+
+    await openFromMore('الفلاش كاردز');
+    final due = store.dueCards(DateTime.now()).length;
+    expect(due, greaterThan(0));
+    await tester.tap(find.text('ابدأ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('اقلب الكارت'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('كويس'));
+    await tester.pumpAndSettle();
+    expect(store.dueCards(DateTime.now()), hasLength(due - 1));
+    await _back(tester);
+    await _back(tester);
+
+    await openFromMore('الملاحظات واللينكات');
+    expect(find.text('ملخص الـ Normalization'), findsOneWidget);
+    await _back(tester);
+
+    await openFromMore('الترمات وخطة التخرج');
+    expect(find.text('التقدير التراكمي'), findsOneWidget);
+    await _scrollTo(tester, find.text('الترم الأول 2025/2026'));
+    await tester.tap(find.text('خطة التخرج'));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('تقدر تسجلها'));
+    await _scrollTo(tester, find.text('شبكات الحاسب'));
   });
 
   testWidgets('first launch shows onboarding and loads demo data', (

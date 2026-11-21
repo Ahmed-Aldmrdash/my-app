@@ -2,8 +2,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import 'academic_screen.dart';
 import 'app_tabs.dart';
 import 'dashboard_screen.dart';
+import 'finals_screen.dart';
+import 'flashcards_screen.dart';
+import 'notes_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 import 'sync_screen.dart';
@@ -28,6 +32,34 @@ class MoreScreen extends StatelessWidget {
             title: 'المواد والدرجات',
             subtitle: 'درجاتك وحضورك في كل مادة',
             onTap: () => onNavigate(AppTabs.subjects),
+          ),
+          MoreEntry(
+            icon: Icons.workspace_premium_rounded,
+            color: AppColors.coral,
+            title: 'الفاينال',
+            subtitle: 'جدول الامتحانات وخطة المذاكرة',
+            onTap: () => pushPage(context, const FinalsScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.sticky_note_2_rounded,
+            color: AppColors.amber,
+            title: 'الملاحظات واللينكات',
+            subtitle: 'درايف ويوتيوب و PDF لكل مادة',
+            onTap: () => pushPage(context, const NotesScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.style_rounded,
+            color: AppColors.cyan,
+            title: 'الفلاش كاردز',
+            subtitle: 'سؤال وجواب ومراجعة في ميعادها',
+            onTap: () => pushPage(context, const FlashcardsScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.history_edu_rounded,
+            color: AppColors.sky,
+            title: 'الترمات وخطة التخرج',
+            subtitle: 'المعدل التراكمي وفاضلك كام',
+            onTap: () => pushPage(context, const AcademicScreen()),
           ),
           MoreEntry(
             icon: Icons.insights_rounded,

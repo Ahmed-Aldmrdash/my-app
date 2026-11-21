@@ -15,6 +15,8 @@ class ReminderTarget {
   static const projects = 'tab:3:3';
   static const home = 'tab:0';
   static const focus = 'focus';
+  static const finals = 'page:finals';
+  static const flashcards = 'page:flashcards';
 }
 
 /// A notification the app wants shown at [when].
@@ -180,6 +182,21 @@ List<PlannedReminder> planReminders(
     );
   }
 
+  for (final e in store.finals) {
+    final subject = store.subjectById(e.subjectId);
+    if (subject == null) continue;
+    addDeadline(
+      due: e.start,
+      offsets: e.reminders,
+      title: '🎓 فاينال ${subject.name}',
+      context: [
+        if (e.place.isNotEmpty) e.place,
+        if (e.seat.isNotEmpty) 'رقم الجلوس ${e.seat}',
+      ].join(' • '),
+      payload: ReminderTarget.finals,
+    );
+  }
+
   for (final t in store.tasks) {
     if (t.done || t.dueDate == null) continue;
     addDeadline(
@@ -263,10 +280,43 @@ String dailySummaryBody(AppStore store, DateTime day) {
     );
   }
 
+  final finals = store.upcomingFinals(day);
+  if (finals.isNotEmpty) {
+    final next = finals.first;
+    final name = store.subjectById(next.subjectId)?.name ?? '';
+    // Calendar days, counted in UTC so daylight saving can't shift them.
+    final days = DateTime.utc(
+      next.start.year,
+      next.start.month,
+      next.start.day,
+    ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
+    if (days <= 30) {
+      lines.add(
+        days <= 0
+            ? '🎓 النهارده فاينال $name الساعة ${formatTime(next.start)} — بالتوفيق'
+            : '🎓 فاضل ${daysText(days)} على فاينال $name',
+      );
+    }
+  }
+
+  final plan = store.planOn(day).where((e) => !e.done).length;
+  if (plan > 0) {
+    lines.add(
+      '🗓️ في خطة المذاكرة ${countText(plan, 'مهمة', 'مهمتين', 'مهام', 'مهمة')} النهارده',
+    );
+  }
+
   final reviews = store.dueReviews(day).length;
   if (reviews > 0) {
     lines.add(
       '🔁 ${countText(reviews, 'مراجعة', 'مراجعتين', 'مراجعات', 'مراجعة')} مستنياك النهارده',
+    );
+  }
+
+  final cards = store.dueCards(day).length;
+  if (cards > 0) {
+    lines.add(
+      '🧠 ${countText(cards, 'كارت', 'كارتين', 'كروت', 'كارت')} للمراجعة',
     );
   }
 

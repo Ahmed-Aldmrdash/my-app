@@ -7,8 +7,10 @@ import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 import '../sync/sync_doc.dart';
+import '../utils/academic.dart';
 import '../utils/grade_calculator.dart';
 import '../utils/ids.dart';
+import '../utils/study_plan.dart' as planner;
 import '../utils/json.dart';
 import 'storage.dart';
 
@@ -82,6 +84,43 @@ class AppStore extends ChangeNotifier {
     (e) => e.id,
   );
 
+  final _finalRecords = _Records<FinalExam>(
+    'finals',
+    FinalExam.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _planRecords = _Records<PlanEntry>(
+    'planEntries',
+    PlanEntry.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _noteRecords = _Records<Note>(
+    'notes',
+    Note.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _cardRecords = _Records<Flashcard>(
+    'flashcards',
+    Flashcard.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _semesterRecords = _Records<Semester>(
+    'semesters',
+    Semester.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _courseRecords = _Records<PlanCourse>(
+    'planCourses',
+    PlanCourse.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+
   /// Every synced list this app version knows, in [syncedCollections]
   /// order.
   late final List<_Records<Object?>> _records = [
@@ -94,6 +133,12 @@ class AppStore extends ChangeNotifier {
     _gradeRecords,
     _studySessionRecords,
     _attendanceRecords,
+    _finalRecords,
+    _planRecords,
+    _noteRecords,
+    _cardRecords,
+    _semesterRecords,
+    _courseRecords,
   ];
 
   List<Subject> get _subjects => _subjectRecords.items;
@@ -105,19 +150,25 @@ class AppStore extends ChangeNotifier {
   List<GradeEntry> get _grades => _gradeRecords.items;
   List<StudySession> get _studySessions => _studySessionRecords.items;
   List<AttendanceRecord> get _attendance => _attendanceRecords.items;
+  List<FinalExam> get _finals => _finalRecords.items;
+  List<PlanEntry> get _planEntries => _planRecords.items;
+  List<Note> get _notes => _noteRecords.items;
+  List<Flashcard> get _cards => _cardRecords.items;
+  List<Semester> get _semesters => _semesterRecords.items;
+  List<PlanCourse> get _courses => _courseRecords.items;
 
   /// Lists added by newer app versions, kept as they are so that syncing
   /// from this device never deletes them.
   final Map<String, List<Object?>> _otherCollections = {};
 
-  /// The shared settings as last loaded or synced (without this device's own
-  /// keys), and what this version made of them. Until the settings are
-  /// edited here they are saved back exactly as loaded, so values only a
-  /// newer app version understands survive.
+  /// The shared settings as last loaded or saved (without this device's own
+  /// keys), and what this version made of them then. An edit only writes the
+  /// settings it changed over them, so values only a newer app version
+  /// understands survive.
   Map<String, dynamic> _settingsRaw = {};
-  String _settingsBaseline = '';
+  Map<String, dynamic> _settingsBase = {};
 
-  /// The focus timer as last loaded or synced, kept for the same reason.
+  /// The focus timer as last loaded or saved, kept for the same reason.
   Object? _focusRaw;
   FocusState? _focusLoaded;
 
@@ -153,17 +204,26 @@ class AppStore extends ChangeNotifier {
       UnmodifiableListView(_studySessions);
   UnmodifiableListView<AttendanceRecord> get attendance =>
       UnmodifiableListView(_attendance);
+  UnmodifiableListView<FinalExam> get finals => UnmodifiableListView(_finals);
+  UnmodifiableListView<PlanEntry> get planEntries =>
+      UnmodifiableListView(_planEntries);
+  UnmodifiableListView<Note> get notes => UnmodifiableListView(_notes);
+  UnmodifiableListView<Flashcard> get flashcards =>
+      UnmodifiableListView(_cards);
+  UnmodifiableListView<Semester> get semesters =>
+      UnmodifiableListView(_semesters);
+  UnmodifiableListView<PlanCourse> get planCourses =>
+      UnmodifiableListView(_courses);
 
   /// The focus timer, when one is running or paused.
   FocusState? get focus => _focus;
   AppSettings get settings => _settings;
 
+  /// Whether there is no data at all, so replacing it loses nothing.
   bool get isEmpty =>
-      _studySessions.isEmpty &&
-      _subjects.isEmpty &&
-      _tasks.isEmpty &&
-      _projects.isEmpty &&
-      _sessions.isEmpty;
+      _records.every((r) => r.items.isEmpty) &&
+      _otherCollections.values.every((l) => l.isEmpty) &&
+      _focus == null;
 
   /// Whether everything here is the sample semester, or was added on top of
   /// it (like a grade for a sample subject): the student was only trying
@@ -245,18 +305,25 @@ class AppStore extends ChangeNotifier {
     'meta': _meta.toJson(),
   };
 
-  /// The shared settings: as loaded while not edited here, otherwise the
-  /// edited ones on top of what was loaded.
+  /// The shared settings: as loaded or last saved, with only what was
+  /// changed here since then written over it.
   Map<String, dynamic> _syncedSettingsJson() {
     final own = _settings.toSyncJson();
-    if (jsonEncode(own) != _settingsBaseline) return {..._settingsRaw, ...own};
-    return _settingsRaw.isEmpty ? own : {..._settingsRaw};
+    if (_settingsRaw.isEmpty) return own;
+    return overlayChanges(_settingsRaw, _settingsBase, own);
   }
 
-  /// The focus timer: as loaded while untouched here.
-  Object? _focusJson() => identical(_focus, _focusLoaded) && _focusRaw is Map
-      ? Map<String, dynamic>.from(_focusRaw! as Map)
-      : _focus?.toJson();
+  /// The focus timer, the same way.
+  Object? _focusJson() {
+    final raw = _focusRaw;
+    if (identical(_focus, _focusLoaded)) {
+      return raw is Map ? Map<String, dynamic>.from(raw) : _focus?.toJson();
+    }
+    final now = _focus?.toJson();
+    final before = _focusLoaded?.toJson();
+    if (now == null || raw is! Map || before == null) return now;
+    return overlayChanges(Map<String, dynamic>.from(raw), before, now);
+  }
 
   /// Remembers the settings just loaded from [raw] (see [_settingsRaw]).
   void _rememberSettings(Object? raw) {
@@ -266,7 +333,19 @@ class AppStore extends ChangeNotifier {
           if (e.key is String && !AppSettings.localOnlyKeys.contains(e.key))
             e.key as String: e.value,
     };
-    _settingsBaseline = jsonEncode(_settings.toSyncJson());
+    _settingsBase = _settings.toSyncJson();
+  }
+
+  /// After saving a change made here: what was saved becomes the base the
+  /// next edit is compared with.
+  void _rebase() {
+    for (final r in _records) {
+      r.rebase();
+    }
+    _settingsRaw = _syncedSettingsJson();
+    _settingsBase = _settings.toSyncJson();
+    _focusRaw = _focusJson();
+    _focusLoaded = _focus;
   }
 
   /// Replaces the data with [doc], usually the result of merging with the
@@ -348,8 +427,9 @@ class AppStore extends ChangeNotifier {
     _reindex();
     if (fromSync) {
       _takeSnapshot();
-    } else if (_stampChanges()) {
-      _localChanges.add(null);
+    } else {
+      if (_stampChanges()) _localChanges.add(null);
+      _rebase();
     }
     notifyListeners();
     try {
@@ -506,15 +586,29 @@ class AppStore extends ChangeNotifier {
     return _changed();
   }
 
-  /// Deletes the subject with its timetable, lectures, quizzes and grades.
-  /// Tasks and projects are kept but detached from it.
+  /// Deletes the subject with its timetable, lectures, quizzes, grades,
+  /// finals, notes and cards. Tasks and projects are kept but detached.
   Future<void> deleteSubject(String id) {
+    _removeSubject(id);
+    return _changed();
+  }
+
+  void _removeSubject(String id) {
     _subjects.removeWhere((e) => e.id == id);
     _sessions.removeWhere((e) => e.subjectId == id);
     _studyItems.removeWhere((e) => e.subjectId == id);
     _assessments.removeWhere((e) => e.subjectId == id);
     _grades.removeWhere((e) => e.subjectId == id);
     _attendance.removeWhere((e) => e.subjectId == id);
+    _finals.removeWhere((e) => e.subjectId == id);
+    _planEntries.removeWhere((e) => e.subjectId == id);
+    _notes.removeWhere((e) => e.subjectId == id);
+    _cards.removeWhere((e) => e.subjectId == id);
+    for (var i = 0; i < _courses.length; i++) {
+      if (_courses[i].subjectId == id) {
+        _courses[i] = _courses[i].copyWith(clearSubject: true);
+      }
+    }
     for (var i = 0; i < _studySessions.length; i++) {
       final s = _studySessions[i];
       if (s.subjectId == id) {
@@ -558,7 +652,6 @@ class AppStore extends ChangeNotifier {
         );
       }
     }
-    return _changed();
   }
 
   // ---------------------------------------------------------------------------
@@ -602,8 +695,25 @@ class AppStore extends ChangeNotifier {
       _studyItems.where((s) => s.isReviewDue(now)).toList()
         ..sort((a, b) => a.nextReviewDate!.compareTo(b.nextReviewDate!));
 
+  /// Deletes a lecture. Its notes, cards and plan entries stay with the
+  /// subject.
   Future<void> deleteStudyItem(String id) {
     _studyItems.removeWhere((e) => e.id == id);
+    for (var i = 0; i < _notes.length; i++) {
+      if (_notes[i].studyItemId == id) {
+        _notes[i] = _notes[i].copyWith(clearStudyItem: true);
+      }
+    }
+    for (var i = 0; i < _cards.length; i++) {
+      if (_cards[i].studyItemId == id) {
+        _cards[i] = _cards[i].withoutStudyItem();
+      }
+    }
+    for (var i = 0; i < _planEntries.length; i++) {
+      if (_planEntries[i].studyItemId == id) {
+        _planEntries[i] = _planEntries[i].withoutStudyItem();
+      }
+    }
     return _changed();
   }
 
@@ -867,6 +977,302 @@ class AppStore extends ChangeNotifier {
       a.year == b.year && a.month == b.month && a.day == b.day;
 
   // ---------------------------------------------------------------------------
+  // Finals & study plan
+
+  /// Every final exam, soonest first.
+  List<FinalExam> get finalsSorted =>
+      [..._finals]..sort((a, b) => a.start.compareTo(b.start));
+
+  /// Finals not over yet, soonest first.
+  List<FinalExam> upcomingFinals(DateTime now) =>
+      finalsSorted.where((e) => !e.isOver(now)).toList();
+
+  List<FinalExam> finalsFor(String subjectId) =>
+      finalsSorted.where((e) => e.subjectId == subjectId).toList();
+
+  Future<void> saveFinal(FinalExam e) {
+    _upsert(_finals, e, (x) => x.id);
+    return _changed();
+  }
+
+  /// Deletes an exam and the planner's unfinished entries for it.
+  Future<void> deleteFinal(String id) {
+    _finals.removeWhere((e) => e.id == id);
+    _planEntries.removeWhere((e) => e.examId == id && e.auto && !e.done);
+    return _changed();
+  }
+
+  /// The plan entries of [day], in the order they were planned.
+  List<PlanEntry> planOn(DateTime day) =>
+      _planEntries.where((e) => _sameDay(e.day, day)).toList();
+
+  Future<void> savePlanEntry(PlanEntry e) {
+    _upsert(_planEntries, e, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deletePlanEntry(String id) {
+    _planEntries.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  /// Ticks an entry off (or back on). Ticking off "study this lecture" also
+  /// marks the lecture as studied.
+  Future<void> togglePlanEntry(String id, {DateTime? now}) {
+    final i = _planEntries.indexWhere((e) => e.id == id);
+    if (i < 0) return Future.value();
+    final entry = _planEntries[i].copyWith(done: !_planEntries[i].done);
+    _planEntries[i] = entry;
+    if (entry.done && entry.kind == PlanKind.study) {
+      final j = _studyItems.indexWhere((s) => s.id == entry.studyItemId);
+      if (j >= 0 && !_studyItems[j].status.isDone) {
+        _studyItems[j] = _studyItems[j].withStatus(
+          StudyStatus.studied,
+          now: now,
+        );
+      }
+    }
+    return _changed();
+  }
+
+  /// Moves [entries] to [day] (e.g. the missed ones to today).
+  Future<void> movePlanEntries(Iterable<PlanEntry> entries, DateTime day) {
+    final ids = {for (final e in entries) e.id};
+    for (var i = 0; i < _planEntries.length; i++) {
+      if (ids.contains(_planEntries[i].id)) {
+        _planEntries[i] = _planEntries[i].copyWith(
+          day: DateTime(day.year, day.month, day.day),
+        );
+      }
+    }
+    return _changed();
+  }
+
+  /// Replaces the planner's unfinished entries with a fresh plan from
+  /// today. Entries done or written by hand stay. Returns how many entries
+  /// were planned.
+  Future<int> regenerateStudyPlan(DateTime now) async {
+    _planEntries.removeWhere((e) => e.auto && !e.done);
+    // Entries already done keep their place; the same id means the same
+    // thing to do, so it isn't planned again.
+    final kept = {for (final e in _planEntries) e.id};
+    final fresh = planner
+        .generateStudyPlan(
+          today: now,
+          exams: _finals,
+          studyItems: _studyItems,
+          subjectName: (id) => subjectById(id)?.name ?? '',
+          perDay: _settings.planPerDay,
+        )
+        .where((e) => !kept.contains(e.id))
+        .toList();
+    _planEntries.addAll(fresh);
+    await _changed();
+    return fresh.length;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notes & links
+
+  /// Notes of a subject or a lecture (or all of them), pinned first, then
+  /// the most recently edited.
+  List<Note> notesFor({String? subjectId, String? studyItemId}) =>
+      _notes
+          .where(
+            (n) =>
+                (subjectId == null || n.subjectId == subjectId) &&
+                (studyItemId == null || n.studyItemId == studyItemId),
+          )
+          .toList()
+        ..sort((a, b) {
+          if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+          return b.updatedAt.compareTo(a.updatedAt);
+        });
+
+  Future<void> saveNote(Note n) {
+    _upsert(_notes, n, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteNote(String id) {
+    _notes.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Flashcards
+
+  /// A subject's cards (or a lecture's), oldest first.
+  List<Flashcard> cardsFor(String subjectId, {String? studyItemId}) =>
+      _cards
+          .where(
+            (c) =>
+                c.subjectId == subjectId &&
+                (studyItemId == null || c.studyItemId == studyItemId),
+          )
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+  /// Cards to review today: overdue ones first, then new ones.
+  List<Flashcard> dueCards(DateTime now, {String? subjectId}) =>
+      _cards
+          .where(
+            (c) =>
+                c.isDue(now) &&
+                (subjectId == null || c.subjectId == subjectId) &&
+                subjectById(c.subjectId) != null,
+          )
+          .toList()
+        ..sort((a, b) {
+          if (a.isNew != b.isNew) return a.isNew ? 1 : -1;
+          final byDue = (a.dueDate ?? a.createdAt).compareTo(
+            b.dueDate ?? b.createdAt,
+          );
+          return byDue != 0 ? byDue : a.createdAt.compareTo(b.createdAt);
+        });
+
+  Future<void> saveCard(Flashcard c) {
+    _upsert(_cards, c, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteCard(String id) {
+    _cards.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  Future<void> answerCard(String id, CardAnswer answer, DateTime now) {
+    final i = _cards.indexWhere((e) => e.id == id);
+    if (i < 0) return Future.value();
+    _cards[i] = _cards[i].answered(answer, now);
+    return _changed();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Semesters & study plan
+
+  /// The archive, cumulative averages and graduation progress.
+  AcademicRecord get academicRecord =>
+      AcademicRecord(semesters: _semesters, courses: _courses);
+
+  /// Subjects of the current semester: those not archived yet (a semester
+  /// closed without clearing its data keeps its subjects).
+  List<Subject> get currentSubjects {
+    final archived = {
+      for (final c in _courses)
+        if (c.isFinished && c.subjectId != null) c.subjectId,
+    };
+    return _subjects.where((s) => !archived.contains(s.id)).toList();
+  }
+
+  Semester? semesterById(String? id) {
+    for (final s in _semesters) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
+  Future<void> saveSemester(Semester s) {
+    _upsert(_semesters, s, (x) => x.id);
+    return _changed();
+  }
+
+  /// Deletes a semester. Its courses stay in the study plan without their
+  /// grades.
+  Future<void> deleteSemester(String id) {
+    _semesters.removeWhere((e) => e.id == id);
+    for (var i = 0; i < _courses.length; i++) {
+      if (_courses[i].semesterId == id) {
+        _courses[i] = _courses[i].copyWith(clearResult: true);
+      }
+    }
+    return _changed();
+  }
+
+  Future<void> saveCourse(PlanCourse c) {
+    _upsert(_courses, c, (x) => x.id);
+    return _changed();
+  }
+
+  /// Deletes a course and removes it from other courses' prerequisites.
+  Future<void> deleteCourse(String id) {
+    _courses.removeWhere((e) => e.id == id);
+    for (var i = 0; i < _courses.length; i++) {
+      final c = _courses[i];
+      if (c.prerequisites.contains(id)) {
+        _courses[i] = c.copyWith(
+          prerequisites: [...c.prerequisites]..remove(id),
+        );
+      }
+    }
+    return _changed();
+  }
+
+  /// Archives the current semester as [name]: every subject becomes a
+  /// finished course of the study plan with its final [results], matched to
+  /// an existing course by link, code or name. With [clearData] the
+  /// semester's subjects and everything about them are then removed.
+  Future<Semester> closeSemester({
+    required String name,
+    required Map<String, ({double? percent, String? letter})> results,
+    bool clearData = true,
+    String nextName = '',
+  }) async {
+    final order = _semesters.fold(0, (m, s) => s.order > m ? s.order : m) + 1;
+    final semester = Semester(
+      id: newId(),
+      name: name.trim().isEmpty ? 'ترم ${_semesters.length + 1}' : name.trim(),
+      order: order,
+    );
+    _semesters.add(semester);
+    final closing = currentSubjects;
+    for (final subject in closing) {
+      final r = results[subject.id];
+      // The course it already is in the plan: linked to it, or the same
+      // code or name and not passed yet (a failed course being retaken).
+      var i = _courses.indexWhere(
+        (c) => c.subjectId == subject.id && !c.isFinished,
+      );
+      if (i < 0) {
+        i = _courses.indexWhere(
+          (c) =>
+              (!c.isFinished || !coursePassed(c)) &&
+              courseMatchesSubject(c, subject),
+        );
+      }
+      final base = i >= 0 ? _courses[i] : null;
+      final course = PlanCourse(
+        id: base?.id ?? newId(),
+        name: subject.name,
+        code: subject.code.isNotEmpty ? subject.code : (base?.code ?? ''),
+        creditHours: subject.creditHours,
+        group: base?.group ?? '',
+        level: base?.level ?? 0,
+        prerequisites: base?.prerequisites ?? const [],
+        semesterId: semester.id,
+        percent: r?.percent,
+        letter: r?.letter,
+        // Kept so the subject counts as archived if its data stays.
+        subjectId: subject.id,
+        notes: base?.notes ?? '',
+      );
+      if (i >= 0) {
+        _courses[i] = course;
+      } else {
+        _courses.add(course);
+      }
+    }
+    if (clearData) {
+      for (final subject in closing) {
+        _removeSubject(subject.id);
+      }
+    }
+    _settings = _settings.copyWith(semesterName: nextName.trim());
+    await _changed();
+    return semester;
+  }
+
+  // ---------------------------------------------------------------------------
   // Settings & data
 
   Future<void> updateSettings(AppSettings s) {
@@ -909,9 +1315,14 @@ class _Records<T> {
   final String Function(T) idOf;
   final List<T> items = [];
 
-  /// Record id -> the record as last loaded and the map it came from. Kept
-  /// after a record is deleted, so undoing the deletion restores it whole.
-  final Map<String, ({T item, Map<String, dynamic> raw})> _loaded = {};
+  /// Record id -> the record as last loaded or saved, the map it was saved
+  /// as, and what this version made of it. Kept after a record is deleted,
+  /// so undoing the deletion restores it whole.
+  final Map<
+    String,
+    ({T item, Map<String, dynamic> raw, Map<String, dynamic> base})
+  >
+  _loaded = {};
 
   /// Replaces the records with the saved list [raw]. A malformed record is
   /// skipped rather than losing everything.
@@ -928,7 +1339,16 @@ class _Records<T> {
         continue;
       }
       items.add(item);
-      _loaded[idOf(item)] = (item: item, raw: map);
+      _loaded[idOf(item)] = (item: item, raw: map, base: encode(item));
+    }
+  }
+
+  /// Makes what would be saved now the base for the next edit.
+  void rebase() {
+    for (final item in items) {
+      final loaded = _loaded[idOf(item)];
+      if (loaded != null && identical(loaded.item, item)) continue;
+      _loaded[idOf(item)] = (item: item, raw: _json(item), base: encode(item));
     }
   }
 
@@ -940,6 +1360,6 @@ class _Records<T> {
     final loaded = _loaded[idOf(item)];
     if (loaded == null) return encode(item);
     if (identical(loaded.item, item)) return Map.of(loaded.raw);
-    return {...loaded.raw, ...encode(item)};
+    return overlayChanges(loaded.raw, loaded.base, encode(item));
   }
 }
