@@ -618,6 +618,130 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     ),
   ];
 
+  final contacts = [
+    Contact(
+      id: 'demo-ct-1',
+      name: 'د. محمد علي',
+      subjectIds: [prog.id],
+      email: 'm.ali@university.edu.eg',
+      office: 'مبنى B — دور 2 — مكتب 214',
+      officeHours: const [
+        WeeklySlot(weekday: DateTime.sunday, startMinute: 600, endMinute: 720),
+        WeeklySlot(weekday: DateTime.tuesday, startMinute: 780, endMinute: 840),
+      ],
+    ),
+    Contact(
+      id: 'demo-ct-2',
+      name: 'م. سارة',
+      role: ContactRole.assistant,
+      subjectIds: [prog.id],
+      office: 'معمل 3',
+    ),
+    Contact(
+      id: 'demo-ct-3',
+      name: 'د. هبة حسن',
+      subjectIds: [db.id],
+      office: 'مبنى A — مكتب 105',
+      officeHours: const [
+        WeeklySlot(weekday: DateTime.monday, startMinute: 660, endMinute: 780),
+      ],
+    ),
+    const Contact(
+      id: 'demo-ct-4',
+      name: 'يوسف',
+      role: ContactRole.classmate,
+      phone: '01000000000',
+    ),
+    const Contact(id: 'demo-ct-5', name: 'مريم', role: ContactRole.classmate),
+  ];
+  final groups = [
+    StudyGroup(
+      id: 'demo-gr-1',
+      name: 'فريق مشروع المكتبة',
+      subjectId: db.id,
+      memberIds: const ['demo-ct-4', 'demo-ct-5'],
+      notes: 'يوسف: الـ ERD • مريم: الـ SQL • أنا: الواجهة',
+    ),
+  ];
+
+  final calendar = [
+    CalendarEvent(
+      id: 'demo-cal-1',
+      title: 'إجازة عيد',
+      kind: CalendarKind.holiday,
+      start: day(10),
+      end: day(12),
+      noClasses: true,
+    ),
+    CalendarEvent(
+      id: 'demo-cal-2',
+      title: 'آخر يوم حذف وإضافة',
+      kind: CalendarKind.addDrop,
+      start: day(5),
+    ),
+    CalendarEvent(
+      id: 'demo-cal-3',
+      title: 'بداية امتحانات الفاينال',
+      kind: CalendarKind.exams,
+      start: day(24),
+    ),
+  ];
+
+  final achievements = [
+    Achievement(
+      id: 'demo-ach-1',
+      title: 'Flutter من الصفر',
+      organization: 'منصة كورسات أونلاين',
+      start: day(-90),
+      end: day(-30),
+      description: 'عملت تطبيق مهام كامل',
+    ),
+    Achievement(
+      id: 'demo-ach-2',
+      kind: AchievementKind.activity,
+      title: 'عضو في فريق IEEE بالكلية',
+      start: day(-200),
+      ongoing: true,
+    ),
+    const Achievement(
+      id: 'demo-ach-3',
+      kind: AchievementKind.skill,
+      title: 'Dart و Flutter و SQL',
+    ),
+  ];
+
+  final applications = [
+    Application(
+      id: 'demo-app-1',
+      title: 'تدريب صيفي في شركة برمجيات',
+      kind: ApplicationKind.internship,
+      deadline: day(15, 23, 59),
+      requirements: const [
+        ProjectStep(id: 'demo-rq-1', title: 'CV', done: true),
+        ProjectStep(id: 'demo-rq-2', title: 'كشف درجات'),
+        ProjectStep(id: 'demo-rq-3', title: 'جواب توصية'),
+      ],
+    ),
+  ];
+
+  final expenses = [
+    for (final (i, d, amount, category, title) in [
+      (1, 0, 40.0, ExpenseCategory.transport, 'مواصلات الكلية'),
+      (2, -1, 120.0, ExpenseCategory.books, 'مذكرة رياضيات'),
+      (3, -1, 75.0, ExpenseCategory.food, ''),
+      (4, -3, 40.0, ExpenseCategory.transport, ''),
+      (5, -6, 200.0, ExpenseCategory.phone, 'باقة النت'),
+    ])
+      Expense(
+        id: 'demo-ex-$i',
+        amount: amount,
+        category: category,
+        title: title,
+        date: day(d),
+        subjectId: category == ExpenseCategory.books ? math.id : null,
+      ),
+  ];
+
   // The current settings as saved (with any a newer app version added),
   // plus a sample semester name and graduation hours if none are set.
   final settings = {
@@ -643,6 +767,12 @@ Future<void> loadDemoData(AppStore store, DateTime now) {
     'flashcards': cards.map((e) => e.toJson()).toList(),
     'semesters': [sem1.toJson(), sem2.toJson()],
     'planCourses': courses.map((e) => e.toJson()).toList(),
+    'contacts': contacts.map((e) => e.toJson()).toList(),
+    'groups': groups.map((e) => e.toJson()).toList(),
+    'calendar': calendar.map((e) => e.toJson()).toList(),
+    'achievements': achievements.map((e) => e.toJson()).toList(),
+    'applications': applications.map((e) => e.toJson()).toList(),
+    'expenses': expenses.map((e) => e.toJson()).toList(),
     'settings': settings,
   };
   return store.importJson(jsonEncode(data));

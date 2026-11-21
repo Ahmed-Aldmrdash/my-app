@@ -121,6 +121,43 @@ class AppStore extends ChangeNotifier {
     (e) => e.id,
   );
 
+  final _contactRecords = _Records<Contact>(
+    'contacts',
+    Contact.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _groupRecords = _Records<StudyGroup>(
+    'groups',
+    StudyGroup.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _eventRecords = _Records<CalendarEvent>(
+    'calendar',
+    CalendarEvent.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _achievementRecords = _Records<Achievement>(
+    'achievements',
+    Achievement.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _applicationRecords = _Records<Application>(
+    'applications',
+    Application.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+  final _expenseRecords = _Records<Expense>(
+    'expenses',
+    Expense.fromJson,
+    (e) => e.toJson(),
+    (e) => e.id,
+  );
+
   /// Every synced list this app version knows, in [syncedCollections]
   /// order.
   late final List<_Records<Object?>> _records = [
@@ -139,6 +176,12 @@ class AppStore extends ChangeNotifier {
     _cardRecords,
     _semesterRecords,
     _courseRecords,
+    _contactRecords,
+    _groupRecords,
+    _eventRecords,
+    _achievementRecords,
+    _applicationRecords,
+    _expenseRecords,
   ];
 
   List<Subject> get _subjects => _subjectRecords.items;
@@ -156,6 +199,12 @@ class AppStore extends ChangeNotifier {
   List<Flashcard> get _cards => _cardRecords.items;
   List<Semester> get _semesters => _semesterRecords.items;
   List<PlanCourse> get _courses => _courseRecords.items;
+  List<Contact> get _contacts => _contactRecords.items;
+  List<StudyGroup> get _groups => _groupRecords.items;
+  List<CalendarEvent> get _events => _eventRecords.items;
+  List<Achievement> get _achievements => _achievementRecords.items;
+  List<Application> get _applications => _applicationRecords.items;
+  List<Expense> get _expenses => _expenseRecords.items;
 
   /// Lists added by newer app versions, kept as they are so that syncing
   /// from this device never deletes them.
@@ -214,6 +263,15 @@ class AppStore extends ChangeNotifier {
       UnmodifiableListView(_semesters);
   UnmodifiableListView<PlanCourse> get planCourses =>
       UnmodifiableListView(_courses);
+  UnmodifiableListView<Contact> get contacts => UnmodifiableListView(_contacts);
+  UnmodifiableListView<StudyGroup> get groups => UnmodifiableListView(_groups);
+  UnmodifiableListView<CalendarEvent> get calendar =>
+      UnmodifiableListView(_events);
+  UnmodifiableListView<Achievement> get achievements =>
+      UnmodifiableListView(_achievements);
+  UnmodifiableListView<Application> get applications =>
+      UnmodifiableListView(_applications);
+  UnmodifiableListView<Expense> get expenses => UnmodifiableListView(_expenses);
 
   /// The focus timer, when one is running or paused.
   FocusState? get focus => _focus;
@@ -607,6 +665,21 @@ class AppStore extends ChangeNotifier {
     for (var i = 0; i < _courses.length; i++) {
       if (_courses[i].subjectId == id) {
         _courses[i] = _courses[i].copyWith(clearSubject: true);
+      }
+    }
+    for (var i = 0; i < _contacts.length; i++) {
+      if (_contacts[i].subjectIds.contains(id)) {
+        _contacts[i] = _contacts[i].withoutSubject(id);
+      }
+    }
+    for (var i = 0; i < _groups.length; i++) {
+      if (_groups[i].subjectId == id) {
+        _groups[i] = _groups[i].copyWith(clearSubject: true);
+      }
+    }
+    for (var i = 0; i < _expenses.length; i++) {
+      if (_expenses[i].subjectId == id) {
+        _expenses[i] = _expenses[i].withoutSubject();
       }
     }
     for (var i = 0; i < _studySessions.length; i++) {
@@ -1270,6 +1343,138 @@ class AppStore extends ChangeNotifier {
     _settings = _settings.copyWith(semesterName: nextName.trim());
     await _changed();
     return semester;
+  }
+
+  // ---------------------------------------------------------------------------
+  // People & groups
+
+  /// Contacts by name, optionally only those of a subject.
+  List<Contact> contactsFor({String? subjectId}) =>
+      _contacts
+          .where((c) => subjectId == null || c.subjectIds.contains(subjectId))
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+
+  Contact? contactById(String id) {
+    for (final c in _contacts) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  Future<void> saveContact(Contact c) {
+    _upsert(_contacts, c, (x) => x.id);
+    return _changed();
+  }
+
+  /// Deletes a contact and takes them out of every group.
+  Future<void> deleteContact(String id) {
+    _contacts.removeWhere((e) => e.id == id);
+    for (var i = 0; i < _groups.length; i++) {
+      final g = _groups[i];
+      if (g.memberIds.contains(id)) {
+        _groups[i] = g.copyWith(memberIds: [...g.memberIds]..remove(id));
+      }
+    }
+    return _changed();
+  }
+
+  Future<void> saveGroup(StudyGroup g) {
+    _upsert(_groups, g, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteGroup(String id) {
+    _groups.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Academic calendar
+
+  /// Calendar events, soonest first.
+  List<CalendarEvent> get calendarSorted =>
+      [..._events]..sort((a, b) => a.firstDay.compareTo(b.firstDay));
+
+  /// The no-classes event covering [day] (a holiday), if any.
+  CalendarEvent? dayOff(DateTime day) {
+    for (final e in _events) {
+      if (e.noClasses && e.covers(day)) return e;
+    }
+    return null;
+  }
+
+  Future<void> saveEvent(CalendarEvent e) {
+    _upsert(_events, e, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteEvent(String id) {
+    _events.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  // ---------------------------------------------------------------------------
+  // CV & applications
+
+  /// Achievements, newest first (ongoing ones on top).
+  List<Achievement> get achievementsSorted => [..._achievements]
+    ..sort((a, b) {
+      if (a.ongoing != b.ongoing) return a.ongoing ? -1 : 1;
+      final da = a.end ?? a.start ?? DateTime(1970);
+      final db = b.end ?? b.start ?? DateTime(1970);
+      return db.compareTo(da);
+    });
+
+  Future<void> saveAchievement(Achievement a) {
+    _upsert(_achievements, a, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteAchievement(String id) {
+    _achievements.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  /// Applications: open ones by deadline first, then the rest.
+  List<Application> get applicationsSorted => [..._applications]
+    ..sort((a, b) {
+      if (a.isOpen != b.isOpen) return a.isOpen ? -1 : 1;
+      final da = a.deadline ?? DateTime(9999);
+      final db = b.deadline ?? DateTime(9999);
+      return da.compareTo(db);
+    });
+
+  Future<void> saveApplication(Application a) {
+    _upsert(_applications, a, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteApplication(String id) {
+    _applications.removeWhere((e) => e.id == id);
+    return _changed();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Expenses
+
+  /// Expenses of the month of [month], newest first.
+  List<Expense> expensesIn(DateTime month) =>
+      _expenses
+          .where(
+            (e) => e.date.year == month.year && e.date.month == month.month,
+          )
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+
+  Future<void> saveExpense(Expense e) {
+    _upsert(_expenses, e, (x) => x.id);
+    return _changed();
+  }
+
+  Future<void> deleteExpense(String id) {
+    _expenses.removeWhere((e) => e.id == id);
+    return _changed();
   }
 
   // ---------------------------------------------------------------------------

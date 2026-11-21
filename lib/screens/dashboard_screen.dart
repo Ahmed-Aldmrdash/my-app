@@ -566,7 +566,11 @@ class _NextClassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
-    final next = findNextClass(store.sessions, now);
+    final next = findNextClass(
+      store.sessions,
+      now,
+      isOff: (d) => store.dayOff(d) != null,
+    );
     if (next == null) return const SizedBox.shrink();
     final subject = store.subjectById(next.session.subjectId);
     final color = subjectColor(subject, context);
@@ -660,7 +664,10 @@ class _TodaySchedule extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
     if (store.sessions.isEmpty) return const SizedBox.shrink();
-    final today = store.sessionsOn(now.weekday);
+    final off = store.dayOff(now);
+    final today = off != null
+        ? const <ClassSession>[]
+        : store.sessionsOn(now.weekday);
     final nowMinute = now.hour * 60 + now.minute;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -670,7 +677,17 @@ class _TodaySchedule extends StatelessWidget {
           icon: Icons.today_rounded,
           trailing: SeeAllButton('الجدول كله', onPressed: () => onNavigate(1)),
         ),
-        if (today.isEmpty)
+        if (off != null)
+          AppCard(
+            child: Row(
+              children: [
+                const Text('🏖️', style: TextStyle(fontSize: 24)),
+                const SizedBox(width: 12),
+                Expanded(child: Text('النهارده ${off.title} — مفيش محاضرات')),
+              ],
+            ),
+          )
+        else if (today.isEmpty)
           const AppCard(
             child: Row(
               children: [

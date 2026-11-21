@@ -4,6 +4,11 @@ import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import 'academic_screen.dart';
 import 'app_tabs.dart';
+import 'applications_screen.dart';
+import 'calendar_screen.dart';
+import 'career_screen.dart';
+import 'contacts_screen.dart';
+import 'expenses_screen.dart';
 import 'dashboard_screen.dart';
 import 'finals_screen.dart';
 import 'flashcards_screen.dart';
@@ -67,6 +72,47 @@ class MoreScreen extends StatelessWidget {
             title: 'الإحصائيات',
             subtitle: 'وقت مذاكرتك وأيامك المتتالية',
             onTap: () => pushPage(context, const StatsScreen()),
+          ),
+        ],
+      ),
+      (
+        'الجامعة',
+        Icons.account_balance_rounded,
+        [
+          MoreEntry(
+            icon: Icons.event_available_rounded,
+            color: AppColors.teal,
+            title: 'التقويم الأكاديمي',
+            subtitle: 'الإجازات والتسجيل والحذف والإضافة',
+            onTap: () => pushPage(context, const CalendarScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.contacts_rounded,
+            color: AppColors.primary,
+            title: 'الدكاترة والزمايل',
+            subtitle: 'أرقامهم ومكاتبهم والمجموعات',
+            onTap: () => pushPage(context, const ContactsScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.workspace_premium_rounded,
+            color: AppColors.amber,
+            title: 'الكورسات والـ CV',
+            subtitle: 'شهادات وتدريب وأنشطة',
+            onTap: () => pushPage(context, const CareerScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.school_rounded,
+            color: AppColors.sky,
+            title: 'المنح والتقديمات',
+            subtitle: 'المواعيد والورق المطلوب',
+            onTap: () => pushPage(context, const ApplicationsScreen()),
+          ),
+          MoreEntry(
+            icon: Icons.account_balance_wallet_rounded,
+            color: AppColors.orange,
+            title: 'المصاريف',
+            subtitle: 'صرفت كام وعلى إيه',
+            onTap: () => pushPage(context, const ExpensesScreen()),
           ),
         ],
       ),

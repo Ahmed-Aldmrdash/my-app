@@ -11,26 +11,32 @@ class ClassOccurrence {
   bool isOngoing(DateTime now) => !now.isBefore(start) && now.isBefore(end);
 }
 
-/// The class that is running now, or the next one to start.
-ClassOccurrence? findNextClass(Iterable<ClassSession> sessions, DateTime now) {
+/// The class that is running now, or the next one to start, skipping the
+/// days [isOff] says have no classes (holidays).
+ClassOccurrence? findNextClass(
+  Iterable<ClassSession> sessions,
+  DateTime now, {
+  bool Function(DateTime day)? isOff,
+}) {
   ClassOccurrence? best;
   for (final s in sessions) {
     final dayDelta = (s.weekday - now.weekday) % 7;
-    DateTime at(int extraDays, int minute) => DateTime(
-      now.year,
-      now.month,
-      now.day + dayDelta + extraDays,
-      minute ~/ 60,
-      minute % 60,
-    );
-    var start = at(0, s.startMinute);
-    var end = at(0, s.endMinute);
-    if (!end.isAfter(now)) {
-      start = at(7, s.startMinute);
-      end = at(7, s.endMinute);
-    }
-    if (best == null || start.isBefore(best.start)) {
-      best = ClassOccurrence(s, start, end);
+    // A long holiday can skip a few weeks; give up after ten.
+    for (var week = 0; week < 10; week++) {
+      DateTime at(int minute) => DateTime(
+        now.year,
+        now.month,
+        now.day + dayDelta + 7 * week,
+        minute ~/ 60,
+        minute % 60,
+      );
+      final start = at(s.startMinute);
+      final end = at(s.endMinute);
+      if (!end.isAfter(now) || (isOff?.call(start) ?? false)) continue;
+      if (best == null || start.isBefore(best.start)) {
+        best = ClassOccurrence(s, start, end);
+      }
+      break;
     }
   }
   return best;

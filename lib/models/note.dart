@@ -103,6 +103,10 @@ LinkType linkTypeOf(String url) {
 String normalizeUrl(String input) {
   final t = input.trim();
   if (t.isEmpty) return t;
-  if (RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://').hasMatch(t)) return t;
+  // Already a link: "https://…", or "tel:" / "mailto:" without slashes.
+  if (t.contains('://') ||
+      RegExp(r'^(mailto|tel|sms):', caseSensitive: false).hasMatch(t)) {
+    return t;
+  }
   return 'https://$t';
 }

@@ -80,7 +80,7 @@ void main() {
     expect(tester.widget<NavigationBar>(bar).selectedIndex, 4);
 
     await _tapTab(tester, 'المزيد');
-    await _scrollTo(tester, find.text('الإعدادات'));
+    await _center(tester, find.text('الإعدادات'));
     await tester.tap(find.text('الإعدادات'));
     await tester.pumpAndSettle();
     expect(find.text('اسمك (عشان أناديك بيه)'), findsOneWidget);
@@ -96,7 +96,7 @@ void main() {
           .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
           .clearSnackBars();
       await _tapTab(tester, 'المزيد');
-      await _scrollTo(tester, find.text(title));
+      await _center(tester, find.text(title));
       await tester.tap(find.text(title));
       await tester.pumpAndSettle();
     }
@@ -294,5 +294,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('المزامنة مش شغالة'), findsOneWidget);
     expect(find.text('حفظ واتصال'), findsOneWidget);
+  });
+
+  testWidgets('calendar, people, CV, applications, expenses and export', (
+    tester,
+  ) async {
+    await _pumpApp(tester, demo: true);
+    Future<void> open(String title, String expected) async {
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .clearSnackBars();
+      await _tapTab(tester, 'المزيد');
+      await _center(tester, find.text(title));
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+      await _scrollTo(tester, find.text(expected));
+    }
+
+    await open('التقويم الأكاديمي', 'إجازة عيد');
+    await _back(tester);
+    await open('الدكاترة والزمايل', 'د. محمد علي');
+    await tester.tap(find.text('المجموعات'));
+    await tester.pumpAndSettle();
+    expect(find.text('فريق مشروع المكتبة'), findsOneWidget);
+    await _back(tester);
+    await open('الكورسات والـ CV', 'Flutter من الصفر');
+    await tester.tap(find.byTooltip('ملخص الـ CV'));
+    await tester.pumpAndSettle();
+    expect(find.text('ملخص للـ CV'), findsOneWidget);
+    await _back(tester);
+    await _back(tester);
+    await open('المنح والتقديمات', 'تدريب صيفي في شركة برمجيات');
+    await _back(tester);
+    await open('المصاريف', 'صرفت الشهر ده');
+    await _back(tester);
+
+    await _tapTab(tester, 'الجدول');
+    await tester.tap(find.byTooltip('صورة الجدول'));
+    await tester.pumpAndSettle();
+    expect(find.text('شارك الصورة'), findsOneWidget);
+    expect(find.textContaining('جدولي'), findsOneWidget);
   });
 }

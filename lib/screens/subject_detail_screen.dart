@@ -12,6 +12,7 @@ import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
 import 'assessment_form.dart';
+import 'contacts_screen.dart';
 import 'final_exam_form.dart';
 import 'flashcards_screen.dart';
 import 'focus_screen.dart';
@@ -1001,6 +1002,18 @@ class _NotesTab extends StatelessWidget {
             ],
           ),
         ),
+        SectionHeader(
+          'الدكاترة والمعيدين',
+          icon: Icons.contacts_rounded,
+          trailing: IconButton(
+            tooltip: 'ضيف حد',
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            onPressed: () =>
+                pushPage(context, ContactForm(initialSubjectId: subject.id)),
+          ),
+        ),
+        for (final c in store.contactsFor(subjectId: subject.id))
+          ContactTile(contact: c),
         SectionHeader(
           'الملاحظات واللينكات',
           icon: Icons.sticky_note_2_rounded,

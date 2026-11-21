@@ -12,6 +12,8 @@ import '../theme/app_theme.dart';
 import '../utils/study_stats.dart';
 import '../widgets/common.dart';
 import 'app_tabs.dart';
+import 'applications_screen.dart';
+import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
 import 'finals_screen.dart';
 import 'flashcards_screen.dart';
@@ -108,6 +110,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ReminderTarget.focus => const FocusScreen(),
       ReminderTarget.finals => const FinalsScreen(),
       ReminderTarget.flashcards => const FlashcardReviewScreen(),
+      ReminderTarget.calendar => const CalendarScreen(),
+      ReminderTarget.applications => const ApplicationsScreen(),
       _ => null,
     };
     if (page != null) {

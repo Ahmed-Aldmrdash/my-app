@@ -50,6 +50,12 @@ const syncedCollections = <String>[
   'flashcards',
   'semesters',
   'planCourses',
+  'contacts',
+  'groups',
+  'calendar',
+  'achievements',
+  'applications',
+  'expenses',
 ];
 
 /// When each synced record was last changed or deleted on any device, in

@@ -17,6 +17,8 @@ class ReminderTarget {
   static const focus = 'focus';
   static const finals = 'page:finals';
   static const flashcards = 'page:flashcards';
+  static const calendar = 'page:calendar';
+  static const applications = 'page:applications';
 }
 
 /// A notification the app wants shown at [when].
@@ -107,6 +109,8 @@ List<PlannedReminder> planReminders(
   if (!settings.notificationsEnabled) return focusAlarm;
 
   final weekly = <PlannedReminder>[];
+  final classDays = <PlannedReminder>[];
+  bool isOff(DateTime day) => store.dayOff(day) != null;
   for (final session in store.sessions) {
     if (!session.notify) continue;
     final subject = store.subjectById(session.subjectId);
@@ -117,25 +121,47 @@ List<PlannedReminder> planReminders(
         ? 'بتبدأ دلوقتي ($start)$place'
         : 'هتبدأ بعد ${durationText(Duration(minutes: session.reminderMinutes))} '
               '(الساعة $start)$place';
-    weekly.add(
-      PlannedReminder(
-        when: nextWeeklyReminder(
-          now,
-          session.weekday,
-          session.startMinute,
-          session.reminderMinutes,
-        ),
-        title: '${session.type.label}: ${subject.name}',
-        body: body,
-        channel: ReminderChannel.classes,
-        payload: ReminderTarget.schedule,
-        weekly: true,
-      ),
+    final first = nextWeeklyReminder(
+      now,
+      session.weekday,
+      session.startMinute,
+      session.reminderMinutes,
     );
+    PlannedReminder at(DateTime when, {bool weeklyRepeat = false}) =>
+        PlannedReminder(
+          when: when,
+          title: '${session.type.label}: ${subject.name}',
+          body: body,
+          channel: ReminderChannel.classes,
+          payload: ReminderTarget.schedule,
+          weekly: weeklyRepeat,
+        );
+    // The next four classes. A repeating weekly alarm can't skip holidays,
+    // so when one falls on a day off they go out one by one instead; the
+    // plan is made again whenever the app opens or the data changes.
+    final upcoming = [
+      for (var week = 0; week < 4; week++)
+        DateTime(
+          first.year,
+          first.month,
+          first.day + 7 * week,
+          first.hour,
+          first.minute,
+        ),
+    ];
+    DateTime classStart(DateTime reminder) =>
+        reminder.add(Duration(minutes: session.reminderMinutes));
+    if (upcoming.any((r) => isOff(classStart(r)))) {
+      for (final r in upcoming) {
+        if (!isOff(classStart(r))) classDays.add(at(r));
+      }
+    } else {
+      weekly.add(at(first, weeklyRepeat: true));
+    }
   }
   weekly.sort((a, b) => a.when.compareTo(b.when));
 
-  final oneOff = <PlannedReminder>[];
+  final oneOff = <PlannedReminder>[...classDays];
   void addDeadline({
     required DateTime due,
     required List<int> offsets,
@@ -197,6 +223,32 @@ List<PlannedReminder> planReminders(
     );
   }
 
+  for (final e in store.calendar) {
+    // Events are days; remind relative to 9 in the morning.
+    final start = e.firstDay.add(const Duration(hours: 9));
+    addDeadline(
+      due: start,
+      offsets: e.reminders,
+      title: '📅 ${e.title}',
+      context: e.noClasses ? 'مفيش محاضرات' : '',
+      payload: ReminderTarget.calendar,
+    );
+  }
+
+  for (final a in store.applications) {
+    final deadline = a.deadline;
+    if (!a.isOpen || deadline == null) continue;
+    addDeadline(
+      due: deadline,
+      offsets: a.reminders,
+      title: '🎓 آخر ميعاد للتقديم: ${a.title}',
+      context: a.requirements.isEmpty
+          ? ''
+          : 'جهزت ${a.requirements.where((r) => r.done).length} من ${a.requirements.length}',
+      payload: ReminderTarget.applications,
+    );
+  }
+
   for (final t in store.tasks) {
     if (t.done || t.dueDate == null) continue;
     addDeadline(
@@ -252,7 +304,11 @@ List<PlannedReminder> planReminders(
 String dailySummaryBody(AppStore store, DateTime day) {
   final lines = <String>[];
 
-  final sessions = store.sessionsOn(day.weekday);
+  final off = store.dayOff(day);
+  if (off != null) lines.add('🏖️ النهارده ${off.title} — مفيش محاضرات');
+  final sessions = off != null
+      ? const <ClassSession>[]
+      : store.sessionsOn(day.weekday);
   if (sessions.isNotEmpty) {
     final first = sessions.first;
     final firstName = store.subjectById(first.subjectId)?.name ?? '';

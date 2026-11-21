@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/common.dart';
+import 'export_screen.dart';
 import 'final_exam_form.dart';
 
 /// The finals timetable with countdowns, and the study plan until the last
@@ -39,6 +40,14 @@ class _FinalsScreenState extends State<FinalsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('الفاينال'),
+        actions: [
+          IconButton(
+            tooltip: 'صورة جدول الفاينال',
+            icon: const Icon(Icons.image_outlined),
+            onPressed: () =>
+                pushPage(context, const TimetableExportScreen(finals: true)),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           tabs: const [

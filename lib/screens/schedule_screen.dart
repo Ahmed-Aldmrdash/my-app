@@ -7,6 +7,7 @@ import '../utils/formatters.dart';
 import '../widgets/common.dart';
 import '../widgets/item_tiles.dart';
 import 'session_form.dart';
+import 'export_screen.dart';
 
 /// The weekly timetable, one page per day starting Saturday.
 class ScheduleScreen extends StatefulWidget {
@@ -49,6 +50,13 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('الجدول'),
+        actions: [
+          IconButton(
+            tooltip: 'صورة الجدول',
+            icon: const Icon(Icons.image_outlined),
+            onPressed: () => pushPage(context, const TimetableExportScreen()),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(92),
           child: Column(

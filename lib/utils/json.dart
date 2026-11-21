@@ -38,6 +38,9 @@ List<int> readIntList(Object? v, [List<int> fallback = const []]) {
   return v.whereType<num>().map((e) => e.toInt()).toList();
 }
 
+List<String> readStringList(Object? v) =>
+    v is List ? v.whereType<String>().toList() : <String>[];
+
 List<T> readList<T>(Object? v, T Function(Map<String, dynamic>) parse) {
   if (v is! List) return <T>[];
   final out = <T>[];
